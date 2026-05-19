@@ -1,5 +1,7 @@
 # F1 MOZA Bridge
 
+[한국어 README](README.ko.md)
+
 Experimental game-profile telemetry bridge for forwarding sim racing telemetry to MOZA Pit House and testing packet-level remaps for MOZA dashboards.
 
 The first fully supported adapter is F1 25 over UDP. Its first remap fixes a common shape mismatch: F1 25 wheel arrays use `RL, RR, FL, FR`, while MOZA dashboard field names are exposed as `FL, FR, RL, RR`. The bridge can rewrite the tyre wear array before forwarding packets, which is useful when a downstream consumer treats the raw array as front-left first.
@@ -35,7 +37,7 @@ Set F1 25 telemetry to send packets to the bridge:
 | UDP Telemetry | On |
 | UDP IP Address | `127.0.0.1` |
 | UDP Port | `20777` |
-| UDP Send Rate | `20Hz` or `40Hz` |
+| UDP Send Rate | `60Hz` recommended for HUD smoothness; `20Hz` for maximum stability; `120Hz` experimental if the game allows it |
 | UDP Format | `2025` |
 
 MOZA Pit House normally listens for F1 25 on port `22025`, so the bridge forwards there by default.
@@ -89,6 +91,8 @@ Then open:
 ```text
 http://127.0.0.1:8765
 ```
+
+The HUD polls at roughly 60Hz. Higher game UDP rates can be useful for logging, but the default browser HUD is tuned for human-visible smoothness rather than high-frequency analysis.
 
 ## Why This Exists
 

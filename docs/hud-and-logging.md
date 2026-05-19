@@ -33,7 +33,7 @@ Open:
 http://127.0.0.1:8765
 ```
 
-The HUD polls `/state` about every 50 ms and renders throttle/brake bars plus speed, gear, RPM, and frame.
+The HUD polls `/state` at roughly 60Hz and renders throttle/brake bars plus speed, gear, RPM, and frame.
 
 ## Scope
 

@@ -1,0 +1,196 @@
+# F1 MOZA Bridge
+
+[English README](README.md)
+
+시뮬레이싱 게임 텔레메트리를 받아 MOZA Pit House로 넘기고, 일부 패킷을 실험적으로 보정하는 Rust 기반 브리지입니다. 현재 가장 잘 지원되는 대상은 F1 25 UDP 텔레메트리입니다.
+
+이 프로젝트는 MOZA 또는 EA의 공식 도구가 아닙니다.
+
+## 지원 프로필
+
+| 게임 | 프로필 | 현재 지원 상태 | 비고 |
+| --- | --- | --- | --- |
+| 자동 감지 | `auto` | UDP 패킷 기반 감지 | 기본값. 현재 F1 25를 감지하고, 알 수 없는 UDP는 그대로 전달합니다 |
+| F1 25 | `f1-25` | UDP passthrough + F1 패킷 보정 | 명시적으로 F1 25만 사용할 때 선택합니다 |
+| Generic UDP | `generic-udp` | UDP passthrough | 외부 도구가 이미 MOZA가 이해할 수 있는 UDP를 만들어줄 때 사용합니다 |
+| Assetto Corsa EVO | `ace` | 문서화만 완료, adapter 미구현 | 단순 UDP가 아니라 shared memory/helper-server 계열 adapter가 필요합니다 |
+| Le Mans Ultimate | `lmu` | 문서화만 완료, adapter 미구현 | MOZA는 rFactor 계열 shared-memory plugin 경로를 사용합니다 |
+
+자동 감지는 실행 중인 프로세스 이름이 아니라 들어오는 텔레메트리 패킷을 기준으로 합니다. 그래서 현재는 F1 25 UDP 패킷만 안정적으로 판별할 수 있습니다.
+
+## 요구 사항
+
+- 대상 게임과 MOZA Pit House가 실행되는 Windows PC
+- Rust 1.95 이상
+- UDP 기반 프로필의 경우 게임 내 UDP 텔레메트리 활성화
+
+## F1 25 설정
+
+F1 25의 Telemetry Settings에서 다음처럼 설정합니다.
+
+| 항목 | 값 |
+| --- | --- |
+| UDP Telemetry | On |
+| UDP IP Address | `127.0.0.1` |
+| UDP Port | `20777` |
+| UDP Send Rate | HUD 부드러움 기준 `60Hz` 권장, 안정성 우선이면 `20Hz`, `120Hz`는 게임이 허용할 때 실험용 |
+| UDP Format | `2025` |
+
+MOZA Pit House는 F1 25 텔레메트리 입력으로 보통 `22025` 포트를 기대하므로, 브리지는 기본적으로 `20777`에서 받아 `22025`로 전달합니다.
+
+## 사용법
+
+기본 passthrough:
+
+```bash
+cargo run -- --listen 20777 --moza-port 22025 --mode passthrough
+```
+
+F1 25 타이어 웨어 순서 보정:
+
+```bash
+cargo run -- --listen 20777 --moza-port 22025 --mode remap --fix-tyre-wear-order
+```
+
+verbose 출력:
+
+```bash
+cargo run -- --mode remap --fix-tyre-wear-order --verbose
+```
+
+dry-run:
+
+```bash
+cargo run -- --mode remap --fix-tyre-wear-order --dry-run
+```
+
+외부 exporter가 만든 UDP를 그대로 전달:
+
+```bash
+cargo run -- --game generic-udp --listen 20777 --moza-port 22025 --mode passthrough
+```
+
+## 입력 로깅과 HUD
+
+F1 25의 `PacketCarTelemetryData`에서 throttle, brake, speed, gear, RPM을 추출합니다.
+
+CSV 로깅:
+
+```bash
+cargo run -- --mode remap --fix-tyre-wear-order --input-log inputs.csv
+```
+
+브라우저 HUD:
+
+```bash
+cargo run -- --hud-http 8765 --input-log inputs.csv
+```
+
+브라우저에서 엽니다.
+
+```text
+http://127.0.0.1:8765
+```
+
+HUD는 약 60Hz 기준으로 화면을 갱신합니다. 사람이 보는 throttle/brake 바는 60Hz면 충분하고, 120Hz 이상은 화면 표시보다 고주파 로깅이나 분석 쪽에 더 의미가 있습니다.
+
+## 왜 필요한가
+
+F1 25 UDP는 바이너리 프로토콜입니다. F1 25의 휠 배열은 다음 순서를 씁니다.
+
+```text
+0 = RL
+1 = RR
+2 = FL
+3 = FR
+```
+
+반면 MOZA 대시보드 필드는 이름 기준으로 노출됩니다.
+
+```text
+TyreWearFL
+TyreWearFR
+TyreWearRL
+TyreWearRR
+```
+
+MOZA Pit House가 F1 25 배열을 이미 올바르게 매핑한다면 `--fix-tyre-wear-order`를 켜지 않는 것이 맞습니다. 실제 Mission R 대시에 타이어 웨어가 앞뒤/좌우로 바뀌어 보일 때만 이 옵션을 켜고 확인해야 합니다.
+
+## MOZA Dash Studio 바인딩
+
+MOZA Dash Studio는 JavaScript 표현식으로 텔레메트리를 읽습니다.
+
+```js
+Telemetry.get("v1/gameData/Rpm").value
+```
+
+대부분의 대시보드 값은 다음 형태입니다.
+
+```text
+v1/gameData/<TelemetryName>
+```
+
+예시:
+
+| 표시 | 바인딩 |
+| --- | --- |
+| Gear | `Telemetry.get("v1/gameData/Gear").value` |
+| RPM | `Telemetry.get("v1/gameData/Rpm").value` |
+| Speed | `Telemetry.get("v1/gameData/SpeedKmh").value` |
+| DRS | `Telemetry.get("v1/gameData/Drs").value` |
+| ERS | `Telemetry.get("v1/gameData/ERSPercent").value` |
+| Fuel laps | `Telemetry.get("v1/gameData/FuelRemainLaps").value` |
+| Brake bias | `Telemetry.get("v1/gameData/BrakeBias").value` |
+| Front-left tyre wear | `Telemetry.get("v1/gameData/TyreWearFL").value` |
+
+이 브리지는 새 MOZA key를 등록하지 않습니다. 예를 들어 Pit House가 `v1/gameData/BehindGap`을 제공하지 않는다면, 브리지만으로 그 key를 새로 만들 수는 없습니다. 브리지는 Pit House가 읽는 기존 게임 패킷 값을 바꾸거나 전달할 수 있습니다.
+
+## 옵션
+
+| 옵션 | 기본값 | 설명 |
+| --- | --- | --- |
+| `--game` | `auto` | `auto`, `f1-25`, `generic-udp`, `ace`, `lmu` |
+| `--listen` | 프로필 기본값 | 게임 UDP를 받는 포트 |
+| `--listen-host` | `0.0.0.0` | 수신 host/interface |
+| `--moza-host` | `127.0.0.1` | MOZA Pit House host |
+| `--moza-port` | 프로필 기본값 | MOZA Pit House 대상 포트 |
+| `--mode` | `passthrough` | `passthrough` 또는 `remap` |
+| `--fix-tyre-wear-order` | `false` | F1 25 `m_tyresWear[4]` 순서 보정 |
+| `--input-log` | 없음 | throttle/brake/speed/gear/RPM CSV 저장 경로 |
+| `--hud-http` | 없음 | 지정한 포트로 로컬 HTTP HUD 실행 |
+| `--hud-host` | `127.0.0.1` | 로컬 HTTP HUD host/interface |
+| `--dry-run` | `false` | 패킷을 MOZA로 전달하지 않음 |
+| `--verbose` | `false` | 런타임 통계 출력 |
+
+## 현재 범위
+
+구현됨:
+
+- F1 25 packet header parsing
+- F1 25 UDP packet 기반 `auto` 감지
+- MOZA Pit House로 UDP passthrough
+- `PacketCarDamageData` 타이어 웨어 순서 보정
+- `PacketCarTelemetryData`에서 throttle/brake/speed/gear/RPM 추출
+- `--input-log` CSV 로깅
+- `--hud-http` 브라우저 HUD
+- ACE/LMU placeholder 프로필과 명확한 에러 메시지
+- Rust unit test
+
+아직 미구현:
+
+- ACE shared-memory adapter
+- LMU/rFactor shared-memory adapter
+- MOZA 대시에 behind gap 새 필드 주입
+- F1 25 -> F1 24 packet down-conversion
+- SimHub 호환 대시보드 에디터
+- Mission R OLED 직접 렌더링
+
+## 안전 메모
+
+이 브리지는 F1 25로 입력을 되돌려 보내지 않습니다. UDP 텔레메트리를 읽고, 필요 시 MOZA Pit House로 전달합니다.
+
+텔레메트리가 멈추면 다음 순서로 다시 시작합니다.
+
+1. MOZA Pit House
+2. F1 MOZA Bridge
+3. 대상 게임

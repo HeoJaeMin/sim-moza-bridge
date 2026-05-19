@@ -105,7 +105,7 @@ const HUD_HTML: &str = r#"<!doctype html>
     .label { font-size: 18px; color: #7e8792; letter-spacing: .04em; }
     .value { font-size: clamp(46px, 8vw, 92px); font-weight: 800; line-height: .95; }
     .bar { height: 42px; background: #161b22; border: 1px solid #2d333b; overflow: hidden; }
-    .fill { height: 100%; width: 0%; transition: width 60ms linear; }
+    .fill { height: 100%; width: 0%; transition: width 16ms linear; }
     #throttle { background: #21d17c; }
     #brake { background: #ff3b30; }
     .stats { display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; }
@@ -148,9 +148,9 @@ async function tick() {
     document.getElementById('rpm').textContent = sample.rpm ?? 0;
     document.getElementById('frame').textContent = sample.frameIdentifier ?? 0;
   } catch (_) {}
-  setTimeout(tick, 50);
+  setTimeout(() => requestAnimationFrame(tick), 16);
 }
-tick();
+requestAnimationFrame(tick);
 </script>
 </body>
 </html>
