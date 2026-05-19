@@ -59,6 +59,7 @@ export async function startUdpBridge(config: BridgeConfig): Promise<void> {
   console.log(
     [
       `F1 MOZA Bridge listening on ${config.listenHost}:${config.listenPort}`,
+      `game=${config.game.id} (${config.game.name})`,
       config.dryRun ? "dry-run enabled; packets will not be forwarded" : `forwarding to ${config.mozaHost}:${config.mozaPort}`,
       `mode=${config.mode}`,
       `fixTyreWearOrder=${config.fixTyreWearOrder}`

@@ -2,6 +2,7 @@ import { F1_25_PACKET_FORMAT, PacketId, packetNames } from "./f1/constants.ts";
 import { parsePacketHeader } from "./f1/header.ts";
 import { rewriteAllTyreWearToMozaNamedOrder } from "./f1/carDamage.ts";
 import type { BridgeConfig } from "./config.ts";
+import type { ProtocolKind } from "./games.ts";
 
 export type BridgeStats = {
   received: number;
@@ -18,7 +19,7 @@ export type ProcessedPacket = {
 };
 
 export class TelemetryBridge {
-  private readonly config: Pick<BridgeConfig, "mode" | "fixTyreWearOrder">;
+  private readonly config: Pick<BridgeConfig, "game" | "mode" | "fixTyreWearOrder">;
 
   readonly stats: BridgeStats = {
     received: 0,
@@ -29,20 +30,23 @@ export class TelemetryBridge {
     byPacketId: new Map()
   };
 
-  constructor(config: Pick<BridgeConfig, "mode" | "fixTyreWearOrder">) {
+  constructor(config: Pick<BridgeConfig, "game" | "mode" | "fixTyreWearOrder">) {
     this.config = config;
   }
 
   process(packet: Buffer): ProcessedPacket | null {
     this.stats.received += 1;
 
-    const header = parsePacketHeader(packet);
-    if (!header) {
-      this.stats.malformed += 1;
-      return null;
+    const protocol = this.config.game.protocol;
+
+    if (protocol === "opaque-udp") {
+      return { packet, patched: false };
     }
 
-    this.stats.byPacketId.set(header.packetId, (this.stats.byPacketId.get(header.packetId) ?? 0) + 1);
+    const header = this.parseKnownProtocolHeader(packet, protocol);
+    if (!header) {
+      return null;
+    }
 
     if (this.config.mode === "passthrough") {
       return { packet, patched: false };
@@ -66,6 +70,22 @@ export class TelemetryBridge {
     }
 
     return { packet, patched: false };
+  }
+
+  private parseKnownProtocolHeader(packet: Buffer, protocol: ProtocolKind): ReturnType<typeof parsePacketHeader> {
+    if (protocol !== "f1-25") {
+      this.stats.ignored += 1;
+      return null;
+    }
+
+    const header = parsePacketHeader(packet);
+    if (!header) {
+      this.stats.malformed += 1;
+      return null;
+    }
+
+    this.stats.byPacketId.set(header.packetId, (this.stats.byPacketId.get(header.packetId) ?? 0) + 1);
+    return header;
   }
 
   markForwarded(): void {

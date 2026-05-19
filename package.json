@@ -1,7 +1,7 @@
 {
   "name": "f1-moza-bridge",
   "version": "0.1.0",
-  "description": "UDP bridge for forwarding and experimentally remapping F1 25 telemetry to MOZA Pit House.",
+  "description": "Game-profile telemetry bridge for forwarding and experimentally remapping sim racing telemetry to MOZA Pit House.",
   "type": "module",
   "bin": {
     "f1-moza-bridge": "./src/main.ts"
@@ -15,6 +15,8 @@
   },
   "keywords": [
     "f1-25",
+    "assetto-corsa-evo",
+    "le-mans-ultimate",
     "moza",
     "telemetry",
     "udp",
