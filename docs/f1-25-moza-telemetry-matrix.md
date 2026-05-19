@@ -17,7 +17,7 @@
 
 ## 결론
 
-MOZA 표에는 전체 telemetry name이 144개 있고, 그중 `F1 24` 컬럼에 지원 표시가 있는 key는 109개입니다. F1 25 UDP에는 그보다 훨씬 많은 raw field가 있으며, 여러 값은 단위 변환, enum label 변환, wheel array 순서 보정, player car 선택, 또는 여러 패킷 조합이 필요합니다.
+MOZA 표에는 전체 telemetry name이 144개 있고, 그중 `F1 24` 컬럼에 지원 표시가 있는 key는 109개입니다. F1 25 UDP에는 그보다 훨씬 많은 raw field가 있으며, 여러 값은 단위 변환, enum label 변환, wheel array 순서 보정, player car 선택, 또는 여러 패킷 조합이 필요합니다. 대표적으로 차간 gap은 F1 25 UDP에 `m_deltaToCarInFront*`, `m_deltaToRaceLeader*`로 존재하지만 MOZA F1 계열 key로는 지원 표시가 없습니다.
 
 현재 브리지가 MOZA로 전달되는 패킷을 실제로 수정하는 값은 `PacketCarDamageData.m_tyresWear[4]`뿐입니다. 나머지는 local HUD, logging, analysis에서 읽거나 파생할 수 있지만 Pit House에 새 `v1/gameData/...` key를 등록하지는 못합니다.
 
@@ -62,6 +62,164 @@ F1 25의 모든 wheel array는 같은 index 순서를 씁니다.
 | `PacketCarTelemetryData` | `m_tyresInnerTemperature[4]` | `TyreTempFLI`, `TyreTempFRI`, `TyreTempRLI`, `TyreTempRRI` |
 | `PacketCarTelemetryData` | `m_tyresPressure[4]` | `TyrePressureFL`, `TyrePressureFR`, `TyrePressureRL`, `TyrePressureRR` |
 | `PacketMotionExData` | `m_wheelSpeed[4]`, `m_wheelSlipRatio[4]`, `m_wheelSlipAngle[4]`, `m_wheelLatForce[4]`, `m_wheelLongForce[4]`, `m_wheelVertForce[4]`, `m_wheelCamber[4]`, `m_wheelCamberGain[4]` | Pit House F1 계열 key로 직접 보존하기 어렵고, 로컬 분석/HUD에서 corner name으로 매핑해야 함 |
+
+## 주요 F1 raw 지표 상세 매핑
+
+아래 표는 대시보드나 분석에 쓰기 쉬운 단위로 F1 25 raw field를 다시 묶은 것입니다. `m_*Data[playerCarIndex]`라고 적힌 항목은 packet header의 `m_playerCarIndex`로 플레이어 차량 row를 골라야 합니다.
+
+### Gap, lap, race position
+
+| 표시/분석 지표 | F1 25 raw field | MOZA F1 key 가능성 | 브리지 처리 방향 |
+| --- | --- | --- | --- |
+| 앞차와의 gap | `PacketLapData.m_lapData[playerCarIndex].m_deltaToCarInFrontMinutesPart`, `m_deltaToCarInFrontMSPart` | MOZA 표의 `Gap`은 F1 24 컬럼 미지원. `FrontGap` 같은 key도 표에 없음 | `minutes * 60000 + ms`로 ms gap 생성. `minutes == 255`는 invalid로 처리. 로컬 HUD/report용 |
+| 선두와의 gap | `PacketLapData.m_lapData[playerCarIndex].m_deltaToRaceLeaderMinutesPart`, `m_deltaToRaceLeaderMSPart` | 직접 key 없음 | leader gap으로 별도 표시. MOZA Pit House key 주입은 불가 |
+| 세이프티카 delta | `PacketLapData.m_lapData[playerCarIndex].m_safetyCarDelta` | 직접 key 없음 | safety car/VSC HUD 또는 분석용 |
+| 현재 순위 | `m_lapData[playerCarIndex].m_carPosition` | `Pos` | 직접 대응 |
+| 현재 lap | `m_lapData[playerCarIndex].m_currentLapNum` | `Lap` | 직접 대응. completed laps는 현재 lap에서 파생 |
+| completed laps | `m_currentLapNum`, start/finish crossing state | `CompletedLaps` | F1 raw에 그대로 있는 값이 아니라 lap state에서 파생 |
+| 현재 lap time | `m_currentLapTimeInMS` | `CurrentLapTime` | ms를 표시 형식으로 변환 |
+| 직전 lap time | `m_lastLapTimeInMS` | `LastLapTime` | ms를 표시 형식으로 변환 |
+| best lap time | `PacketSessionHistoryData.m_lapHistoryData[].m_lapTimeInMS` 또는 `PacketFinalClassificationData.m_bestLapTimeInMS` | `BestLapTime` | session history/final classification 파서 필요 |
+| sector index | `m_lapData[playerCarIndex].m_sector` | `SectorIndex` | `0=S1`, `1=S2`, `2=S3` label 변환 |
+| sector 1/2 time | `m_sector1TimeMinutesPart + m_sector1TimeMSPart`, `m_sector2TimeMinutesPart + m_sector2TimeMSPart` | `Sector1Time`, `Sector2Time` | minute/ms 조합 변환 |
+| lap invalid | `m_currentLapInvalid` | `LapInvalidated` | 직접 대응 |
+| penalties/warnings | `m_penalties`, `m_totalWarnings`, `m_cornerCuttingWarnings` | 직접 key 없음 | 로컬 HUD/report용 |
+| pit status | `m_pitStatus` | `IsInPit`, `Pitlane` | `0=none`, `1=pitting`, `2=in pit area` 변환 |
+| pit stop timing | `m_pitLaneTimerActive`, `m_pitLaneTimeInLaneInMS`, `m_pitStopTimerInMS`, `m_pitStopShouldServePen` | 제한적 | Pit HUD/report용. MOZA 표 직접 key 부족 |
+| driver/result status | `m_driverStatus`, `m_resultStatus` | 제한적 | enum label 변환. inactive/retired filtering에 필요 |
+| track position percent | `m_lapDistance / PacketSessionData.m_trackLength` | `TrackPositionPercent` | 파생 가능 |
+
+### Speed, input, REV, DRS
+
+| 표시/분석 지표 | F1 25 raw field | MOZA F1 key 가능성 | 브리지 처리 방향 |
+| --- | --- | --- | --- |
+| speed km/h | `PacketCarTelemetryData.m_carTelemetryData[playerCarIndex].m_speed` | `SpeedKmh` | 직접 대응 |
+| speed mph / m/s | `m_speed` | `SpeedMph`, `SpeedMs` | 단위 변환 |
+| throttle | `m_throttle` | `Throttle` | F1 raw는 `0.0..1.0`; percent 표시 가능 |
+| brake | `m_brake` | `Brake` | F1 raw는 `0.0..1.0`; percent 표시 가능 |
+| steering | `m_steer` | MOZA F1 표에 명확한 key 없음 | 로컬 HUD/logging 핵심 지표 |
+| clutch | `m_clutch` | `Clutch` | 직접 대응 |
+| gear | `m_gear` | `Gear` | `-1=R`, `0=N`, `1..8` label 변환 |
+| RPM | `m_engineRPM` | `Rpm` | 직접 대응 |
+| max RPM | `PacketCarStatusData.m_maxRPM` | `MaxRpm` | 직접 대응 |
+| REV percent | `m_revLightsPercent` | `CarSettings_CurrentDisplayedRPMPercent`로 추정 | Pit House가 이 key를 F1에서 어떤 raw로 채우는지 실차 검증 필요 |
+| REV LED bits | `m_revLightsBitValue` | 직접 key 없음 | 로컬 HUD LED 또는 별도 wheel LED 제어용. Pit House key로는 보존 어려움 |
+| DRS active | `m_drs` | `Drs` | 직접 대응 |
+| DRS allowed | `PacketCarStatusData.m_drsAllowed` | `DRSAllowed` | 직접 대응 |
+| DRS available distance | `PacketCarStatusData.m_drsActivationDistance` | `DRSAvailable`로 파생 가능 | `> 0`이면 available, 값 자체는 남은 거리 |
+| DRS fault | `PacketCarDamageData.m_drsFault` | 직접 key 없음 | damage/status HUD용 |
+
+### Fuel, ERS, car status
+
+| 표시/분석 지표 | F1 25 raw field | MOZA F1 key 가능성 | 브리지 처리 방향 |
+| --- | --- | --- | --- |
+| fuel mass | `PacketCarStatusData.m_carStatusData[playerCarIndex].m_fuelInTank` | `FuelRemain`, `Fuel` | 직접 대응 가능. 단위 표기 확인 필요 |
+| fuel capacity | `m_fuelCapacity` | `FuelCapacity` | 직접 대응 |
+| fuel laps | `m_fuelRemainingLaps` | `FuelRemainLaps`, `FuelSurplusLaps` | 직접/파생 대응 |
+| fuel class | `m_fuelRemainingLaps`, race target delta | `FuelClass` | label/color 파생 |
+| fuel mix | `m_fuelMix` | `ECUMap`은 F1 24 컬럼 미지원 | F1 25 현대 F1에서는 dashboard 핵심값으로 쓰기 애매함 |
+| brake bias | `m_frontBrakeBias` | `BrakeBias` | 직접 대응 |
+| pit limiter | `m_pitLimiterStatus` | `PitLimiter` | 직접 대응 |
+| traction control | `m_tractionControl` | `TCLevel` | `0=off`, `1=medium`, `2=full` |
+| ABS | `m_antiLockBrakes` | `ABSLevel` | `0=off`, `1=on` |
+| tyre compound | `m_actualTyreCompound`, `m_visualTyreCompound` | 직접 key 없음 | compound label/color는 local HUD/report용 |
+| tyre age | `m_tyresAgeLaps` | 직접 key 없음 | stint/strategy HUD용 |
+| ERS energy store | `m_ersStoreEnergy` | `EnergyRemain`, `Ers`, `ERSStored`, `ERSPercent` | Joules raw. percent는 `4,000,000J` 기준 파생 |
+| ERS max | F1 rule constant | `ERSMax` | 보통 `4,000,000J` |
+| ERS deploy mode | `m_ersDeployMode` | 직접 key 없음 | `0=none`, `1=medium`, `2=hotlap`, `3=overtake` label 변환 |
+| ERS deployed this lap | `m_ersDeployedThisLap` | `EnergyDeployed` | 직접 대응 |
+| ERS harvested this lap | `m_ersHarvestedThisLapMGUK`, `m_ersHarvestedThisLapMGUH` | `EnergyHarvested` | 두 값을 합산 |
+| ERS fault | `PacketCarDamageData.m_ersFault` | 직접 key 없음 | damage/status HUD용 |
+| engine power | `m_enginePowerICE`, `m_enginePowerMGUK` | 직접 key 없음 | 분석/로그용. F1 telemetry privacy 설정에 영향 받음 |
+
+### Session, flags, weather
+
+| 표시/분석 지표 | F1 25 raw field | MOZA F1 key 가능성 | 브리지 처리 방향 |
+| --- | --- | --- | --- |
+| track id/name | `PacketSessionData.m_trackId` | `TrackId`, `MapName` | id는 직접, name은 lookup table 필요 |
+| track length | `m_trackLength` | `TrackLength` | 직접 대응 |
+| session type | `m_sessionType` | `SessionTypeName` | enum label 변환 |
+| total laps | `m_totalLaps` | `LapCount` | 직접 대응 |
+| session time left | `m_sessionTimeLeft` | `SessionTimeLeft` | 직접 대응 |
+| air/track temp | `m_airTemperature`, `m_trackTemperature` | `AirTemp`, `TrackTemp`, Fahrenheit variants | 직접/단위 변환 |
+| weather | `m_weather` | 직접 key 없음 | weather label/icon은 local HUD용 |
+| forecast/rain chance | `m_weatherForecastSamples[]`, `m_rainPercentage` | 직접 key 없음 | strategy/report용 |
+| marshal zones | `m_marshalZones[]` | `YellowFlag`, `GreenFlag` 등으로 파생 가능 | car 위치와 zone을 조합해야 정확함 |
+| vehicle FIA flag | `PacketCarStatusData.m_vehicleFiaFlags` | `YellowFlag`, `GreenFlag` | `-1=unknown`, `0=none`, `1=green`, `2=blue`, `3=yellow` |
+| blue/red/black/white flags | FIA flags, events, result status 조합 | MOZA F1 컬럼에서 일부 미지원 | 별도 검증 전에는 local HUD/report용 |
+| safety car | `m_safetyCarStatus`, `m_numSafetyCarPeriods`, `m_numVirtualSafetyCarPeriods` | 직접 key 없음 | race-control HUD용 |
+| spectating | `m_isSpectating` | `Spectating`은 F1 24 컬럼 미지원 | local state 표시 |
+
+### Damage, wear, reliability
+
+| 표시/분석 지표 | F1 25 raw field | MOZA F1 key 가능성 | 브리지 처리 방향 |
+| --- | --- | --- | --- |
+| tyre wear | `PacketCarDamageData.m_tyresWear[4]` | `TyreWearFL/FR/RL/RR` | wheel index 매핑 필요. 현재 packet-level remap 구현됨 |
+| tyre damage | `m_tyresDamage[4]` | 직접 key 없음 | local HUD/report용 |
+| brake damage | `m_brakesDamage[4]` | 직접 key 없음 | local HUD/report용 |
+| tyre blisters | `m_tyreBlisters[4]` | 직접 key 없음 | F1 25 신규/세부 damage 지표. local HUD/report용 |
+| front wing damage | `m_frontLeftWingDamage`, `m_frontRightWingDamage` | `WingWearFL`, `WingWearFR` | 직접 대응 |
+| rear wing damage | `m_rearWingDamage` | `WingWearR`는 F1 24 컬럼 미지원 | local HUD/report용 |
+| floor/diffuser/sidepod damage | `m_floorDamage`, `m_diffuserDamage`, `m_sidepodDamage` | 직접 key 없음 | local damage panel용 |
+| gearbox damage | `m_gearBoxDamage` | `GearBoxWear` | 직접 대응 |
+| engine damage | `m_engineDamage` | `EngineWear` | 직접 대응 가능 |
+| engine component wear | `m_engineMGUHWear`, `m_engineESWear`, `m_engineCEWear`, `m_engineICEWear`, `m_engineMGUKWear`, `m_engineTCWear` | 직접 key 없음 | reliability report용 |
+| engine blown/seized | `m_engineBlown`, `m_engineSeized` | 직접 key 없음 | alert용 |
+
+### Setup, strategy, and analysis-only data
+
+| 표시/분석 지표 | F1 25 raw field | MOZA F1 key 가능성 | 브리지 처리 방향 |
+| --- | --- | --- | --- |
+| aero setup | `PacketCarSetupData.m_frontWing`, `m_rearWing` | 직접 key 없음 | setup report, A/B 비교용 |
+| differential | `m_onThrottle`, `m_offThrottle` | 직접 key 없음 | traction/rotation recommendation 근거 |
+| suspension geometry | `m_frontCamber`, `m_rearCamber`, `m_frontToe`, `m_rearToe` | 직접 key 없음 | tyre temp/wear 분석과 결합 |
+| suspension/ARB/ride height | `m_frontSuspension`, `m_rearSuspension`, `m_frontAntiRollBar`, `m_rearAntiRollBar`, `m_frontSuspensionHeight`, `m_rearSuspensionHeight` | 직접 key 없음 | handling recommendation 근거 |
+| brake pressure/bias | `m_brakePressure`, `m_brakeBias` | `BrakeBias` 일부 대응 | pressure는 local setup report용 |
+| setup tyre pressure | `m_rearLeftTyrePressure`, `m_rearRightTyrePressure`, `m_frontLeftTyrePressure`, `m_frontRightTyrePressure` | running pressure key와 구분 필요 | setup value와 live `m_tyresPressure[4]`를 분리해서 표시 |
+| tyre set availability | `PacketTyreSetsData.m_tyreSetData[]`, `m_fittedIdx` | 직접 key 없음 | strategy/report용 |
+| lap/stint history | `PacketSessionHistoryData.m_lapHistoryData[]`, `m_tyreStintsHistoryData[]` | 일부 lap time key만 대응 | stint chart/report용 |
+| time trial comparison | `PacketTimeTrialData` datasets | 직접 key 없음 | PB/rival comparison용 |
+
+### Motion, map, physics
+
+| 표시/분석 지표 | F1 25 raw field | MOZA F1 key 가능성 | 브리지 처리 방향 |
+| --- | --- | --- | --- |
+| world position | `PacketMotionData.m_carMotionData[playerCarIndex].m_worldPositionX/Y/Z` | `CarCoordinates01/02/03`, `Location` | 축 이름과 표시 정책 필요 |
+| velocity | `m_worldVelocityX/Y/Z`, `PacketMotionExData.m_localVelocityX/Y/Z` | `SpeedMs`와 일부 관련 | local physics/logging용 |
+| G-force | `m_gForceLateral`, `m_gForceLongitudinal`, `m_gForceVertical` | `GlobalAccelerationG`는 F1 24 컬럼 미지원 | local HUD/analysis용 |
+| orientation | `m_yaw`, `m_pitch`, `m_roll` | `Heading`, `Pitch`, `Roll` | radians to display 변환 |
+| front wheels angle | `PacketMotionExData.m_frontWheelsAngle` | 직접 key 없음 | steering/understeer 분석용 |
+| wheel slip/spin | `m_wheelSlipRatio[4]`, `m_wheelSlipAngle[4]`, `m_wheelSpeed[4]` | `WheelSpin` 파생 가능 | traction/lockup analysis용 |
+| wheel forces | `m_wheelLatForce[4]`, `m_wheelLongForce[4]`, `m_wheelVertForce[4]` | 직접 key 없음 | advanced analysis용 |
+| aero height/roll/chassis | `m_frontAeroHeight`, `m_rearAeroHeight`, `m_frontRollAngle`, `m_rearRollAngle`, `m_chassisYaw`, `m_chassisPitch` | 일부 `Pitch/Roll`과 관련 | setup analysis용 |
+
+## 현재 브리지 parser coverage
+
+| F1 packet | 현재 코드 상태 | 빠진 주요 지표 |
+| --- | --- | --- |
+| `PacketSessionData` | 일부 파싱: total laps, track length, session type, track id | weather, forecast, safety car, marshal zones, session time left |
+| `PacketLapData` | 일부 파싱: lap time, gap to front/leader, lap distance, position, lap, pit, sector, invalid, driver/result status | penalties, warnings, pit timer, speed trap |
+| `PacketCarTelemetryData` | 일부 파싱: throttle/brake/steer/clutch/speed/gear/RPM/DRS/REV/temps/pressure | surface type, suggested gear/MFD panel |
+| `PacketCarStatusData` | 일부 파싱: assists, brake bias, fuel, RPM limits, DRS, tyre compound/age, ERS | DRS activation distance, FIA flags, engine power, network paused |
+| `PacketCarDamageData` | 일부 파싱: tyre wear/damage/blisters, wing damage | brake damage, floor/diffuser/sidepod, faults, component wear |
+| `PacketMotionData` | 미구현 | position, velocity, G-force, yaw/pitch/roll |
+| `PacketCarSetupData` | 미구현 | setup recommendation/report에 필요 |
+| `PacketParticipantsData` | 미구현 | player/team/name/car identity |
+| `PacketEventData` | 미구현 | penalties, flags, speed trap, collisions, overtake events |
+| `PacketSessionHistoryData` | 미구현 | best lap/stint history |
+| `PacketTyreSetsData` | 미구현 | tyre set strategy |
+| `PacketMotionExData` | 미구현 | slip/forces/aero height/advanced physics |
+
+## Multiplayer telemetry visibility
+
+F1 25의 `Your Telemetry` 설정이 `Restricted`인 경우, 다른 플레이어 차량의 일부 값은 UDP에서 0으로 내려올 수 있습니다. 플레이어 본인 차량은 항상 볼 수 있지만, 상대 차량 분석이나 leaderboard gap 외 세부 상태 분석에서는 이 제한을 고려해야 합니다.
+
+제한 대상이 될 수 있는 대표 field:
+
+| Packet | Restricted 때 0 처리될 수 있는 값 |
+| --- | --- |
+| `PacketCarStatusData` | `m_fuelInTank`, `m_fuelCapacity`, `m_fuelMix`, `m_fuelRemainingLaps`, `m_frontBrakeBias`, `m_ersDeployMode`, `m_ersStoreEnergy`, `m_ersDeployedThisLap`, `m_ersHarvestedThisLapMGUK`, `m_ersHarvestedThisLapMGUH`, `m_enginePowerICE`, `m_enginePowerMGUK` |
+| `PacketCarDamageData` | wing/floor/diffuser/sidepod damage, `m_engineDamage`, `m_gearBoxDamage`, `m_tyresWear[4]`, `m_tyresDamage[4]`, `m_brakesDamage[4]`, DRS fault, engine component wear |
 
 ## MOZA F1 계열 key와 F1 25 source
 
