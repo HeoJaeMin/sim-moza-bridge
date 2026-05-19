@@ -1,0 +1,24 @@
+{
+  "name": "f1-moza-bridge",
+  "version": "0.1.0",
+  "description": "UDP bridge for forwarding and experimentally remapping F1 25 telemetry to MOZA Pit House.",
+  "type": "module",
+  "bin": {
+    "f1-moza-bridge": "./src/main.ts"
+  },
+  "scripts": {
+    "start": "node src/main.ts",
+    "test": "node --test test/*.test.ts"
+  },
+  "engines": {
+    "node": ">=24.0.0"
+  },
+  "keywords": [
+    "f1-25",
+    "moza",
+    "telemetry",
+    "udp",
+    "sim-racing"
+  ],
+  "license": "MIT"
+}
