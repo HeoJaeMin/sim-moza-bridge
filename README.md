@@ -119,6 +119,8 @@ cargo run -- \
 
 F1 25 UDP telemetry is a binary protocol. MOZA Dash Studio exposes named values such as `v1/gameData/Rpm` and `v1/gameData/TyreWearFL`. Those two worlds do not always line up directly.
 
+Full field-by-field comparison is in [docs/f1-25-moza-telemetry-matrix.md](docs/f1-25-moza-telemetry-matrix.md).
+
 Known gap categories:
 
 | Area | Why it matters | Current bridge behavior |

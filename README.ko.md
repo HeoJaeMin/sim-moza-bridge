@@ -121,6 +121,8 @@ cargo run -- \
 
 F1 25 UDP는 바이너리 프로토콜입니다. MOZA Dash Studio는 `v1/gameData/Rpm`, `v1/gameData/TyreWearFL` 같은 이름 기반 값을 노출합니다. 두 형식이 항상 1:1로 맞지는 않습니다.
 
+전체 field 비교표는 [docs/f1-25-moza-telemetry-matrix.md](docs/f1-25-moza-telemetry-matrix.md)에 정리했습니다.
+
 알려진 차이 범주는 다음과 같습니다.
 
 | 영역 | 왜 문제가 되는가 | 현재 브리지 동작 |
