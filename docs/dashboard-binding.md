@@ -18,9 +18,12 @@ F1 25 sends raw binary UDP packets. Pit House parses those packets and publishes
 
 That means:
 
+- F1 25 tyre wear is `m_carDamageData[playerCarIndex].m_tyresWear[4]`, ordered `0=RL`, `1=RR`, `2=FL`, `3=FR`.
 - Changing `m_tyresWear[4]` can affect `v1/gameData/TyreWearFL` and related tyre wear keys if Pit House maps those values from the Car Damage packet.
 - Creating a new `v1/gameData/BehindGap` key is not expected to work through UDP packet forwarding alone.
 - Behind gap would need to be packed into an existing Pit House-exposed field, or rendered in a separate dashboard that reads from this bridge directly.
+
+See [F1 25 / MOZA Telemetry Matrix](f1-25-moza-telemetry-matrix.md) for the full raw-field and index mapping.
 
 ## Example Expressions
 

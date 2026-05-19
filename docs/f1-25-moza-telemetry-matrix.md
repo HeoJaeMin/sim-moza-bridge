@@ -21,6 +21,48 @@ MOZA 표에는 전체 telemetry name이 144개 있고, 그중 `F1 24` 컬럼에 
 
 현재 브리지가 MOZA로 전달되는 패킷을 실제로 수정하는 값은 `PacketCarDamageData.m_tyresWear[4]`뿐입니다. 나머지는 local HUD, logging, analysis에서 읽거나 파생할 수 있지만 Pit House에 새 `v1/gameData/...` key를 등록하지는 못합니다.
 
+## F1 raw wheel array 규칙
+
+F1 25 UDP 문서의 실제 타이어 웨어 필드명은 `typeWear`가 아니라 `m_tyresWear[4]`입니다. `PacketCarDamageData`는 22대 차량의 `CarDamageData` 배열을 들고 있으므로 플레이어 차량의 타이어 웨어는 다음 path로 읽습니다.
+
+```text
+PacketCarDamageData.m_carDamageData[PacketHeader.m_playerCarIndex].m_tyresWear[index]
+```
+
+F1 25의 모든 wheel array는 같은 index 순서를 씁니다.
+
+| F1 array index | Corner | 약어 |
+| --- | --- | --- |
+| `0` | Rear Left | `RL` |
+| `1` | Rear Right | `RR` |
+| `2` | Front Left | `FL` |
+| `3` | Front Right | `FR` |
+
+따라서 MOZA 이름 기준 key로 표현하려면 index를 그대로 쓰면 안 되고 아래처럼 corner name으로 다시 매핑해야 합니다.
+
+| MOZA key | F1 raw field path |
+| --- | --- |
+| `TyreWearFL` | `m_carDamageData[playerCarIndex].m_tyresWear[2]` |
+| `TyreWearFR` | `m_carDamageData[playerCarIndex].m_tyresWear[3]` |
+| `TyreWearRL` | `m_carDamageData[playerCarIndex].m_tyresWear[0]` |
+| `TyreWearRR` | `m_carDamageData[playerCarIndex].m_tyresWear[1]` |
+
+현재 `--fix-tyre-wear-order`는 Pit House가 배열을 이름 기준이 아니라 앞에서부터 `FL, FR, RL, RR`처럼 읽는 경우를 보정하기 위한 opt-in 기능입니다. Pit House가 이미 F1 spec대로 `TyreWearFL = m_tyresWear[2]`로 읽고 있다면 이 옵션을 켜면 오히려 값이 틀어집니다.
+
+이 index 규칙은 타이어 웨어만의 문제가 아닙니다. F1 25에서 아래 wheel array들도 같은 `0=RL, 1=RR, 2=FL, 3=FR` 순서를 씁니다.
+
+| F1 packet | F1 field | MOZA 이름 기준으로 매핑이 필요한 key |
+| --- | --- | --- |
+| `PacketCarDamageData` | `m_tyresWear[4]` | `TyreWearFL`, `TyreWearFR`, `TyreWearRL`, `TyreWearRR` |
+| `PacketCarDamageData` | `m_tyresDamage[4]` | 직접 대응 key는 MOZA F1 계열 표에 없음. 로컬 HUD/report에서는 corner name으로 매핑 필요 |
+| `PacketCarDamageData` | `m_brakesDamage[4]` | 직접 대응 key는 MOZA F1 계열 표에 없음. 로컬 HUD/report에서는 corner name으로 매핑 필요 |
+| `PacketCarDamageData` | `m_tyreBlisters[4]` | 직접 대응 key는 MOZA F1 계열 표에 없음. 로컬 HUD/report에서는 corner name으로 매핑 필요 |
+| `PacketCarTelemetryData` | `m_brakesTemperature[4]` | `BrakeTempFL`, `BrakeTempFR`, `BrakeTempRL`, `BrakeTempRR` |
+| `PacketCarTelemetryData` | `m_tyresSurfaceTemperature[4]` | `TyreTempFL`, `TyreTempFR`, `TyreTempRL`, `TyreTempRR` |
+| `PacketCarTelemetryData` | `m_tyresInnerTemperature[4]` | `TyreTempFLI`, `TyreTempFRI`, `TyreTempRLI`, `TyreTempRRI` |
+| `PacketCarTelemetryData` | `m_tyresPressure[4]` | `TyrePressureFL`, `TyrePressureFR`, `TyrePressureRL`, `TyrePressureRR` |
+| `PacketMotionExData` | `m_wheelSpeed[4]`, `m_wheelSlipRatio[4]`, `m_wheelSlipAngle[4]`, `m_wheelLatForce[4]`, `m_wheelLongForce[4]`, `m_wheelVertForce[4]`, `m_wheelCamber[4]`, `m_wheelCamberGain[4]` | Pit House F1 계열 key로 직접 보존하기 어렵고, 로컬 분석/HUD에서 corner name으로 매핑해야 함 |
+
 ## MOZA F1 계열 key와 F1 25 source
 
 표의 `MOZA key`는 `Telemetry.get("v1/gameData/<MOZA key>").value`의 마지막 segment입니다.
