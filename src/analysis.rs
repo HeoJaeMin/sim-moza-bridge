@@ -83,7 +83,7 @@ pub struct CompletedLapAnalysis {
 impl CompletedLapAnalysis {
     pub fn to_markdown(&self) -> String {
         let mut out = String::new();
-        let _ = writeln!(out, "# F1 MOZA Bridge Analysis");
+        let _ = writeln!(out, "# Sim MOZA Bridge Analysis");
         let _ = writeln!(out);
         let _ = writeln!(out, "## Latest Lap");
         let _ = writeln!(out);

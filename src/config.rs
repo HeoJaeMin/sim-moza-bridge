@@ -181,7 +181,7 @@ fn parse_mode(value: &str) -> Result<BridgeMode, String> {
 
 fn help_text() -> String {
     [
-        "Usage: f1-moza-bridge [options]",
+        "Usage: sim-moza-bridge [options]",
         "",
         "Options:",
         "  --game <auto|f1-25|generic-udp|ace|lmu>",

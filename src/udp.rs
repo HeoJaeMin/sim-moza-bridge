@@ -36,7 +36,7 @@ pub fn start_udp_bridge(config: BridgeConfig) -> Result<(), String> {
     println!(
         "{}\n{}\nmode={:?}\nfixTyreWearOrder={}",
         format_args!(
-            "F1 MOZA Bridge listening on {}:{}",
+            "Sim MOZA Bridge listening on {}:{}",
             config.listen_host, config.listen_port
         ),
         if config.dry_run {

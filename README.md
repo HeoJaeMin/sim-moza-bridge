@@ -1,4 +1,4 @@
-# F1 MOZA Bridge
+# Sim MOZA Bridge
 
 [한국어 README](README.ko.md)
 
@@ -217,5 +217,5 @@ The bridge never sends input back to F1 25. It only listens for UDP telemetry an
 If Pit House telemetry stops, close F1 25, Pit House, and the bridge, then start them again in this order:
 
 1. MOZA Pit House
-2. F1 MOZA Bridge
+2. Sim MOZA Bridge
 3. The target game

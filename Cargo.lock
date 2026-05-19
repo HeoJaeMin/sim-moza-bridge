@@ -3,5 +3,5 @@
 version = 4
 
 [[package]]
-name = "f1-moza-bridge"
+name = "sim-moza-bridge"
 version = "0.2.0"

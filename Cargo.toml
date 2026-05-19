@@ -1,9 +1,9 @@
 [package]
-name = "f1-moza-bridge"
+name = "sim-moza-bridge"
 version = "0.2.0"
 edition = "2024"
-description = "Game-profile telemetry bridge for forwarding and experimentally remapping sim racing telemetry to MOZA Pit House."
+description = "Game-profile telemetry bridge for forwarding, logging, and analyzing sim racing telemetry for MOZA Pit House."
 license = "MIT"
-repository = "https://github.com/JeminHeo/f1-moza-bridge"
+repository = "https://github.com/JeminHeo/sim-moza-bridge"
 
 [dependencies]

@@ -1,4 +1,4 @@
-# F1 MOZA Bridge
+# Sim MOZA Bridge
 
 [English README](README.md)
 
@@ -212,5 +212,5 @@ v1/gameData/<TelemetryName>
 텔레메트리가 멈추면 다음 순서로 다시 시작합니다.
 
 1. MOZA Pit House
-2. F1 MOZA Bridge
+2. Sim MOZA Bridge
 3. 대상 게임

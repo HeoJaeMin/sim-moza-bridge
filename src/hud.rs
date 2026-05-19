@@ -96,7 +96,7 @@ const HUD_HTML: &str = r#"<!doctype html>
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>F1 MOZA Bridge HUD</title>
+  <title>Sim MOZA Bridge HUD</title>
   <style>
     :root { color-scheme: dark; font-family: Inter, ui-sans-serif, system-ui, sans-serif; background: #07090d; color: #edf2f7; }
     * { box-sizing: border-box; }
