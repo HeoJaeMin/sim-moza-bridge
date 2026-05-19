@@ -2,9 +2,9 @@
 
 [한국어 README](README.ko.md)
 
-Experimental game-profile telemetry bridge for forwarding sim racing telemetry to MOZA Pit House and testing packet-level remaps for MOZA dashboards.
+Experimental game-profile telemetry bridge for forwarding sim racing telemetry to MOZA Pit House and testing packet-level remaps, logging, HUDs, and analysis for MOZA dashboards.
 
-The first fully supported adapter is F1 25 over UDP. Its first remap fixes a common shape mismatch: F1 25 wheel arrays use `RL, RR, FL, FR`, while MOZA dashboard field names are exposed as `FL, FR, RL, RR`. The bridge can rewrite the tyre wear array before forwarding packets, which is useful when a downstream consumer treats the raw array as front-left first.
+The first fully supported adapter is F1 25 over UDP. The first shipped packet remap fixes tyre wear order, but tyre wear is only one compatibility gap. F1 UDP packets, MOZA dashboard keys, and other sims do not share one universal telemetry shape.
 
 This is not an official MOZA or EA tool.
 
@@ -115,9 +115,22 @@ cargo run -- \
 
 `--corner-log` appends a CSV row for each segment of every completed lap. `--analysis-report` overwrites the Markdown report on each completed lap with clean-lap status, tyre wear, current fuel/brake-bias/ERS state, and setup candidates. The setup candidates are heuristics from trace shape, tyre wear, tyre temperature, and car status. They are meant for A/B testing, not as an automatic setup solver.
 
-## Why This Exists
+## Telemetry Compatibility Gaps
 
-F1 25 UDP telemetry is a binary protocol. Wheel arrays in the official F1 25 specification are ordered:
+F1 25 UDP telemetry is a binary protocol. MOZA Dash Studio exposes named values such as `v1/gameData/Rpm` and `v1/gameData/TyreWearFL`. Those two worlds do not always line up directly.
+
+Known gap categories:
+
+| Area | Why it matters | Current bridge behavior |
+| --- | --- | --- |
+| Wheel arrays | F1 wheel arrays use `RL, RR, FL, FR`, while dashboard keys are usually named `FL, FR, RL, RR`. This affects tyre wear, tyre damage, tyre temperatures, tyre pressure, and brake temperatures. | Internal logging/HUD parsing maps F1 wheel arrays to named corners. Packet forwarding currently rewrites only tyre wear when `--fix-tyre-wear-order` is enabled. |
+| Units and derived values | F1 packets often expose raw values or game-specific units, for example ERS store energy, fuel in tank, fuel remaining laps, rev-light percent, and temperatures. MOZA keys may expose percent, laps, labels, or already-normalized values. | The local HUD/report derives values for display. Forwarded packets are not globally converted except for explicit remap features. |
+| Status and enum fields | DRS, ERS deploy mode, tyre compounds, pit status, lap invalid state, and result status are numeric game enums. Dashboards often expect booleans, labels, or colors. | Parsed for local HUD/analysis where implemented. MOZA dashboard behavior still depends on Pit House's existing keys. |
+| Lap and gap data | F1 has lap distance, lap number, invalid flags, car position, delta-to-front, and delta-to-leader fields. MOZA may not expose matching keys such as `BehindGap` or `FrontGap`. | Used by the local analysis report. The bridge cannot create new MOZA telemetry keys inside Pit House. |
+| Packet version drift | F1 24 and F1 25 packet layouts differ, even when packet ids look similar. | Analysis parsing is guarded to F1 25 format `2025`; unsupported formats can still pass through but are not parsed for local analysis. |
+| Non-F1 games | ACE and LMU do not present the same F1 UDP packet shape. They need shared-memory/plugin adapters or an external UDP exporter. | Listed as profiles, but native adapters are pending. `generic-udp` only forwards packets from another exporter. |
+
+The currently implemented packet-level remap is tyre wear order. In F1 25, wheel arrays are ordered:
 
 ```text
 0 = RL

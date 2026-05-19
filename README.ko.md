@@ -2,7 +2,7 @@
 
 [English README](README.md)
 
-시뮬레이싱 게임 텔레메트리를 받아 MOZA Pit House로 넘기고, 일부 패킷을 실험적으로 보정하는 Rust 기반 브리지입니다. 현재 가장 잘 지원되는 대상은 F1 25 UDP 텔레메트리입니다.
+시뮬레이싱 게임 텔레메트리를 받아 MOZA Pit House로 넘기고, 일부 패킷 보정, 로깅, HUD, 분석을 실험하는 Rust 기반 브리지입니다. 현재 가장 잘 지원되는 대상은 F1 25 UDP 텔레메트리입니다.
 
 이 프로젝트는 MOZA 또는 EA의 공식 도구가 아닙니다.
 
@@ -117,9 +117,22 @@ cargo run -- \
 
 세팅 추천은 자동 정답이 아니라 후보입니다. 예를 들어 mid-corner 조향량과 앞 타이어 웨어/온도가 높으면 front grip 후보를, corner exit에서 스로틀과 조향 보정이 같이 커지면 rear traction 후보를 제안합니다. 같은 연료량, 같은 타이어 age에서 A/B 테스트로 확인해야 합니다.
 
-## 왜 필요한가
+## 텔레메트리 호환 차이
 
-F1 25 UDP는 바이너리 프로토콜입니다. F1 25의 휠 배열은 다음 순서를 씁니다.
+F1 25 UDP는 바이너리 프로토콜입니다. MOZA Dash Studio는 `v1/gameData/Rpm`, `v1/gameData/TyreWearFL` 같은 이름 기반 값을 노출합니다. 두 형식이 항상 1:1로 맞지는 않습니다.
+
+알려진 차이 범주는 다음과 같습니다.
+
+| 영역 | 왜 문제가 되는가 | 현재 브리지 동작 |
+| --- | --- | --- |
+| 휠 배열 | F1 휠 배열은 `RL, RR, FL, FR` 순서이고, 대시보드 key는 보통 `FL, FR, RL, RR` 이름 기준입니다. 타이어 웨어뿐 아니라 타이어 데미지, 타이어 온도, 타이어 압력, 브레이크 온도에도 영향을 줄 수 있습니다. | 내부 로깅/HUD 파서는 F1 휠 배열을 이름 기준 corner로 매핑합니다. 패킷 forwarding에서 실제로 고치는 값은 현재 `--fix-tyre-wear-order`의 타이어 웨어뿐입니다. |
+| 단위와 파생값 | F1 패킷은 ERS 저장 에너지, fuel in tank, fuel remaining laps, rev-light percent, 온도처럼 raw/game-specific 값을 냅니다. MOZA key는 percent, laps, label, normalized value일 수 있습니다. | 로컬 HUD/report에서는 표시용 값을 일부 파생합니다. forwarding 패킷은 명시적인 remap 기능 외에는 전체 단위 변환을 하지 않습니다. |
+| 상태와 enum | DRS, ERS deploy mode, 타이어 compound, pit status, invalid lap, result status는 게임 enum입니다. 대시보드는 boolean, label, color를 기대하는 경우가 많습니다. | 구현된 범위에서는 로컬 HUD/분석용으로 파싱합니다. MOZA 대시 동작은 Pit House가 이미 제공하는 key에 의존합니다. |
+| 랩과 gap 데이터 | F1에는 lap distance, lap number, invalid flag, car position, delta-to-front, delta-to-leader가 있습니다. MOZA가 `BehindGap`, `FrontGap` 같은 대응 key를 제공하지 않을 수 있습니다. | 로컬 분석 리포트에서 사용합니다. 브리지가 Pit House 안에 새 MOZA telemetry key를 만들 수는 없습니다. |
+| 패킷 버전 차이 | F1 24와 F1 25는 packet id가 비슷해도 layout이 다릅니다. | 분석 파싱은 F1 25 format `2025`일 때만 수행합니다. 미지원 format은 passthrough될 수 있지만 로컬 분석에는 쓰지 않습니다. |
+| 비-F1 게임 | ACE와 LMU는 F1 UDP와 같은 packet shape가 아닙니다. shared-memory/plugin adapter 또는 외부 UDP exporter가 필요합니다. | 프로필은 등록되어 있지만 native adapter는 아직 미구현입니다. `generic-udp`는 외부 exporter가 만든 패킷만 그대로 전달합니다. |
+
+현재 구현된 packet-level remap은 타이어 웨어 순서 보정입니다. F1 25의 휠 배열은 다음 순서를 씁니다.
 
 ```text
 0 = RL
