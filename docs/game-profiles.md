@@ -78,13 +78,13 @@ Output adapters:
 For F1 25:
 
 ```bash
-npm start -- --mode remap --fix-tyre-wear-order
+cargo run -- --mode remap --fix-tyre-wear-order
 ```
 
 For an external exporter that already emits compatible packets:
 
 ```bash
-npm start -- --game generic-udp --listen 20777 --moza-port 22025
+cargo run -- --game generic-udp --listen 20777 --moza-port 22025
 ```
 
 For ACE or LMU, running `--game ace` or `--game lmu` will currently fail with a clear explanation instead of pretending a UDP bridge is enough.

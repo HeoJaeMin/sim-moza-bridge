@@ -23,7 +23,7 @@ Auto detection is based on incoming telemetry packets, not process names. It can
 ## Requirements
 
 - Windows PC running the target sim and MOZA Pit House
-- Node.js 24 or newer
+- Rust 1.95 or newer
 - UDP telemetry enabled for UDP-backed profiles
 
 ## F1 25 Settings
@@ -45,31 +45,49 @@ MOZA Pit House normally listens for F1 25 on port `22025`, so the bridge forward
 Passthrough mode sends packets unchanged. Use this first to prove F1 25, the bridge, and Pit House are connected.
 
 ```bash
-npm start -- --listen 20777 --moza-port 22025 --mode passthrough
+cargo run -- --listen 20777 --moza-port 22025 --mode passthrough
 ```
 
 Tyre wear remap mode rewrites `Car Damage` packet tyre wear arrays from F1 wheel order to dashboard-friendly order before forwarding.
 
 ```bash
-npm start -- --listen 20777 --moza-port 22025 --mode remap --fix-tyre-wear-order
+cargo run -- --listen 20777 --moza-port 22025 --mode remap --fix-tyre-wear-order
 ```
 
 Verbose mode prints packet counts and patched packet counts once per second.
 
 ```bash
-npm start -- --mode remap --fix-tyre-wear-order --verbose
+cargo run -- --mode remap --fix-tyre-wear-order --verbose
 ```
 
 Dry run mode parses and patches packets but does not forward them.
 
 ```bash
-npm start -- --mode remap --fix-tyre-wear-order --dry-run
+cargo run -- --mode remap --fix-tyre-wear-order --dry-run
 ```
 
 Generic UDP passthrough can forward packets from any external exporter to any target UDP port. The bridge does not inspect these packets.
 
 ```bash
-npm start -- --game generic-udp --listen 20777 --moza-port 22025 --mode passthrough
+cargo run -- --game generic-udp --listen 20777 --moza-port 22025 --mode passthrough
+```
+
+Input logging writes F1 25 throttle/brake samples to CSV:
+
+```bash
+cargo run -- --mode remap --fix-tyre-wear-order --input-log inputs.csv
+```
+
+The lightweight HUD exposes a browser page with throttle/brake bars and basic car values:
+
+```bash
+cargo run -- --hud-http 8765 --input-log inputs.csv
+```
+
+Then open:
+
+```text
+http://127.0.0.1:8765
 ```
 
 ## Why This Exists
@@ -141,6 +159,9 @@ The bridge does not register new MOZA keys. For example, it cannot create `v1/ga
 | `--moza-port` | Profile default | MOZA Pit House target telemetry port |
 | `--mode` | `passthrough` | `passthrough` or `remap` |
 | `--fix-tyre-wear-order` | `false` | Rewrite F1 25 `m_tyresWear[4]` order |
+| `--input-log` | unset | CSV path for throttle/brake/speed/gear/RPM samples |
+| `--hud-http` | unset | Starts a local HTTP HUD on the given port |
+| `--hud-host` | `127.0.0.1` | Host/interface for the local HTTP HUD |
 | `--dry-run` | `false` | Do not forward packets |
 | `--verbose` | `false` | Print runtime stats |
 
@@ -152,6 +173,9 @@ Implemented:
 - UDP packet-based `auto` detection for F1 25
 - UDP passthrough to MOZA Pit House
 - Experimental tyre wear order remap for `PacketCarDamageData`
+- F1 25 throttle/brake/speed/gear/RPM sample extraction from `PacketCarTelemetryData`
+- CSV input logging with `--input-log`
+- Local browser HUD with `--hud-http`
 - `--game` profile selection with guarded ACE/LMU placeholders
 - Packet-level tests for header parsing and tyre wear remap offsets
 
@@ -161,7 +185,7 @@ Not implemented yet:
 - Native LMU/rFactor shared-memory adapter
 - Behind gap injection into MOZA dashboards
 - F1 25 to F1 24 packet down-conversion
-- A graphical UI
+- Full SimHub-compatible dashboard editor
 - Direct Mission R OLED rendering
 
 ## Safety Notes
