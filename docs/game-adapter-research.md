@@ -51,6 +51,8 @@ For LU, the supported key list includes the important dashboard groups: speed/RP
 
 For ACE and ACR, MOZA's general telemetry support means Pit House can receive some telemetry, but the public digital-dash table does not yet say exactly which `v1/gameData/...` keys are populated for these two titles. The bridge should therefore keep unsupported or uncertain values in the local HUD/logging layer until a real Pit House capture confirms key behavior.
 
+The confirmed subset that can be mapped today is maintained in [confirmed-telemetry-mappings.md](confirmed-telemetry-mappings.md).
+
 ## Adapter Notes
 
 ### ACE

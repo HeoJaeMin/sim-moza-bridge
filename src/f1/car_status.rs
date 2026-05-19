@@ -53,6 +53,8 @@ pub fn parse_player_status_sample(packet: &[u8]) -> Result<StatusSample, String>
         idle_rpm: read_u16_le(packet, base + 19),
         max_gears: packet[base + 21],
         drs_allowed: packet[base + 22] != 0,
+        drs_activation_distance_m: read_u16_le(packet, base + 23),
+        pit_limiter_active: packet[base + 4] != 0,
         actual_tyre_compound: packet[base + 25],
         visual_tyre_compound: packet[base + 26],
         tyres_age_laps: packet[base + 27],
@@ -88,9 +90,11 @@ mod tests {
         packet[base + 19..base + 21].copy_from_slice(&4_000_u16.to_le_bytes());
         packet[base + 21] = 8;
         packet[base + 22] = 1;
+        packet[base + 23..base + 25].copy_from_slice(&450_u16.to_le_bytes());
         packet[base + 25] = 18;
         packet[base + 26] = 17;
         packet[base + 27] = 4;
+        packet[base + 4] = 1;
         packet[base + 37..base + 41].copy_from_slice(&2_000_000.0_f32.to_le_bytes());
         packet[base + 41] = 3;
         packet[base + 50..base + 54].copy_from_slice(&800_000.0_f32.to_le_bytes());
@@ -111,6 +115,8 @@ mod tests {
                 idle_rpm: 4_000,
                 max_gears: 8,
                 drs_allowed: true,
+                drs_activation_distance_m: 450,
+                pit_limiter_active: true,
                 actual_tyre_compound: 18,
                 visual_tyre_compound: 17,
                 tyres_age_laps: 4,

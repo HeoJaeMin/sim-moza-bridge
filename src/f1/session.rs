@@ -2,7 +2,7 @@ use super::constants::PACKET_HEADER_SIZE;
 use super::header::parse_packet_header;
 use crate::telemetry::SessionSample;
 
-pub const SESSION_MIN_PACKET_SIZE: usize = PACKET_HEADER_SIZE + 8;
+pub const SESSION_MIN_PACKET_SIZE: usize = PACKET_HEADER_SIZE + 11;
 
 fn read_u16_le(packet: &[u8], offset: usize) -> u16 {
     u16::from_le_bytes(
@@ -27,6 +27,9 @@ pub fn parse_session_sample(packet: &[u8]) -> Result<SessionSample, String> {
         track_length_m: read_u16_le(packet, PACKET_HEADER_SIZE + 4),
         session_type: packet[PACKET_HEADER_SIZE + 6],
         track_id: packet[PACKET_HEADER_SIZE + 7] as i8,
+        track_temp_c: packet[PACKET_HEADER_SIZE + 1] as i8,
+        air_temp_c: packet[PACKET_HEADER_SIZE + 2] as i8,
+        session_time_left_s: read_u16_le(packet, PACKET_HEADER_SIZE + 9),
     })
 }
 
@@ -43,11 +46,15 @@ mod tests {
         packet[6] = packet_id::SESSION;
         packet[15..19].copy_from_slice(&7.25_f32.to_le_bytes());
         packet[19..23].copy_from_slice(&44_u32.to_le_bytes());
+        packet[PACKET_HEADER_SIZE + 1] = 31;
+        packet[PACKET_HEADER_SIZE + 2] = 22;
         packet[PACKET_HEADER_SIZE + 3] = 58;
         packet[PACKET_HEADER_SIZE + 4..PACKET_HEADER_SIZE + 6]
             .copy_from_slice(&5412_u16.to_le_bytes());
         packet[PACKET_HEADER_SIZE + 6] = 15;
         packet[PACKET_HEADER_SIZE + 7] = 7;
+        packet[PACKET_HEADER_SIZE + 9..PACKET_HEADER_SIZE + 11]
+            .copy_from_slice(&1200_u16.to_le_bytes());
 
         assert_eq!(
             parse_session_sample(&packet).unwrap(),
@@ -58,6 +65,9 @@ mod tests {
                 track_length_m: 5412,
                 session_type: 15,
                 track_id: 7,
+                track_temp_c: 31,
+                air_temp_c: 22,
+                session_time_left_s: 1200,
             }
         );
     }

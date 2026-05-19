@@ -197,11 +197,11 @@ F1 25의 모든 wheel array는 같은 index 순서를 씁니다.
 
 | F1 packet | 현재 코드 상태 | 빠진 주요 지표 |
 | --- | --- | --- |
-| `PacketSessionData` | 일부 파싱: total laps, track length, session type, track id | weather, forecast, safety car, marshal zones, session time left |
-| `PacketLapData` | 일부 파싱: lap time, gap to front/leader, lap distance, position, lap, pit, sector, invalid, driver/result status | penalties, warnings, pit timer, speed trap |
+| `PacketSessionData` | 일부 파싱: total laps, track length, session type, track id, track/air temperature, session time left | weather, forecast, safety car, marshal zones |
+| `PacketLapData` | 일부 파싱: lap time, sector 1/2 time, gap to front/leader, lap distance, position, lap, pit, sector, invalid, driver/result status | penalties, warnings, pit timer, speed trap |
 | `PacketCarTelemetryData` | 일부 파싱: throttle/brake/steer/clutch/speed/gear/RPM/DRS/REV/temps/pressure | surface type, suggested gear/MFD panel |
-| `PacketCarStatusData` | 일부 파싱: assists, brake bias, fuel, RPM limits, DRS, tyre compound/age, ERS | DRS activation distance, FIA flags, engine power, network paused |
-| `PacketCarDamageData` | 일부 파싱: tyre wear/damage/blisters, wing damage | brake damage, floor/diffuser/sidepod, faults, component wear |
+| `PacketCarStatusData` | 일부 파싱: assists, brake bias, fuel, RPM limits, DRS, DRS activation distance, pit limiter, tyre compound/age, ERS | FIA flags, engine power, network paused |
+| `PacketCarDamageData` | 일부 파싱: tyre wear/damage/blisters, wing damage, gearbox damage, engine damage | brake damage, floor/diffuser/sidepod, faults, component wear |
 | `PacketMotionData` | 미구현 | position, velocity, G-force, yaw/pitch/roll |
 | `PacketCarSetupData` | 미구현 | setup recommendation/report에 필요 |
 | `PacketParticipantsData` | 미구현 | player/team/name/car identity |

@@ -46,6 +46,15 @@ fn read_delta_ms(packet: &[u8], ms_offset: usize, min_offset: usize) -> Option<u
     Some(minutes * 60_000 + ms)
 }
 
+fn read_time_ms(packet: &[u8], ms_offset: usize, min_offset: usize) -> Option<u32> {
+    let ms = read_u16_le(packet, ms_offset) as u32;
+    let minutes = packet[min_offset] as u32;
+    if minutes == 255 && ms == u16::MAX as u32 {
+        return None;
+    }
+    Some(minutes * 60_000 + ms)
+}
+
 pub fn parse_player_lap_sample(packet: &[u8]) -> Result<LapSample, String> {
     let header = parse_packet_header(packet)
         .ok_or_else(|| "packet is too short for F1 header".to_owned())?;
@@ -73,6 +82,8 @@ pub fn parse_player_lap_sample(packet: &[u8]) -> Result<LapSample, String> {
         current_lap_invalid: packet[base + 37] != 0,
         driver_status: packet[base + 44],
         result_status: packet[base + 45],
+        sector1_time_ms: read_time_ms(packet, base + 8, base + 10),
+        sector2_time_ms: read_time_ms(packet, base + 11, base + 13),
     })
 }
 
@@ -94,6 +105,10 @@ mod tests {
         let base = lap_data_offset(1).unwrap();
         packet[base..base + 4].copy_from_slice(&81_234_u32.to_le_bytes());
         packet[base + 4..base + 8].copy_from_slice(&42_345_u32.to_le_bytes());
+        packet[base + 8..base + 10].copy_from_slice(&11_111_u16.to_le_bytes());
+        packet[base + 10] = 0;
+        packet[base + 11..base + 13].copy_from_slice(&22_222_u16.to_le_bytes());
+        packet[base + 13] = 1;
         packet[base + 14..base + 16].copy_from_slice(&456_u16.to_le_bytes());
         packet[base + 16] = 1;
         packet[base + 17..base + 19].copy_from_slice(&789_u16.to_le_bytes());
@@ -127,6 +142,8 @@ mod tests {
                 result_status: 2,
                 delta_to_car_in_front_ms: Some(60_456),
                 delta_to_race_leader_ms: Some(789),
+                sector1_time_ms: Some(11_111),
+                sector2_time_ms: Some(82_222),
             }
         );
     }

@@ -566,6 +566,8 @@ mod tests {
             result_status: 2,
             delta_to_car_in_front_ms: None,
             delta_to_race_leader_ms: None,
+            sector1_time_ms: None,
+            sector2_time_ms: None,
         }
     }
 
@@ -624,6 +626,8 @@ mod tests {
             front_left_wing_damage: 0,
             front_right_wing_damage: 0,
             rear_wing_damage: 0,
+            gearbox_damage: 0,
+            engine_damage: 0,
         });
 
         let recommendations = recommend_setup(&[], &damage, &None, &None);
@@ -646,6 +650,9 @@ mod tests {
                 track_length_m: 5_000,
                 session_type: 10,
                 track_id: 1,
+                track_temp_c: 0,
+                air_temp_c: 0,
+                session_time_left_s: 0,
             }),
             ..TelemetryUpdate::default()
         });
@@ -673,6 +680,9 @@ mod tests {
                 track_length_m: 5_000,
                 session_type: 10,
                 track_id: 1,
+                track_temp_c: 0,
+                air_temp_c: 0,
+                session_time_left_s: 0,
             }),
             ..TelemetryUpdate::default()
         });
@@ -728,6 +738,8 @@ mod tests {
             front_left_wing_damage: 0,
             front_right_wing_damage: 0,
             rear_wing_damage: 0,
+            gearbox_damage: 0,
+            engine_damage: 0,
         });
 
         let analysis = analyzer.complete_lap(4, 90_000);

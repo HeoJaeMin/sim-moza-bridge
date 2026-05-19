@@ -125,6 +125,7 @@ cargo run -- \
 F1 25 UDP는 바이너리 프로토콜입니다. MOZA Dash Studio는 `v1/gameData/Rpm`, `v1/gameData/TyreWearFL` 같은 이름 기반 값을 노출합니다. 두 형식이 항상 1:1로 맞지는 않습니다.
 
 전체 field 비교표는 [docs/f1-25-moza-telemetry-matrix.md](docs/f1-25-moza-telemetry-matrix.md)에 정리했습니다.
+F1, LU/LMU, ACE, ACR 중 확실히 매핑할 수 있는 subset은 [docs/confirmed-telemetry-mappings.md](docs/confirmed-telemetry-mappings.md)에 분리했습니다.
 
 알려진 차이 범주는 다음과 같습니다.
 
@@ -214,7 +215,7 @@ v1/gameData/<TelemetryName>
 - MOZA Pit House로 UDP passthrough
 - `PacketCarDamageData` 타이어 웨어 순서 보정
 - `PacketCarTelemetryData`에서 throttle/brake/steer/clutch/DRS/REV/speed/gear/RPM/온도 추출
-- 분석용 player lap/session/car status/car damage parsing
+- 분석용 player lap/session/car status/car damage parsing과 확정 MOZA key mapping
 - `--input-log` CSV 로깅
 - `--corner-log` 완료 랩 segment CSV 로깅
 - `--analysis-report` clean lap 판정과 세팅 후보 Markdown 리포트

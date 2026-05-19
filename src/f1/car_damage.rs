@@ -87,6 +87,8 @@ pub fn parse_player_damage_sample(packet: &[u8]) -> Result<DamageSample, String>
         front_left_wing_damage: packet[base + 28],
         front_right_wing_damage: packet[base + 29],
         rear_wing_damage: packet[base + 30],
+        gearbox_damage: packet[base + 36],
+        engine_damage: packet[base + 37],
     })
 }
 
@@ -182,6 +184,8 @@ mod tests {
         packet[base + 28] = 9;
         packet[base + 29] = 10;
         packet[base + 30] = 11;
+        packet[base + 36] = 12;
+        packet[base + 37] = 13;
 
         let sample = parse_player_damage_sample(&packet).unwrap();
 
@@ -192,6 +196,8 @@ mod tests {
         assert_eq!(sample.tyre_blisters.rr, 6);
         assert_eq!(sample.front_left_wing_damage, 9);
         assert_eq!(sample.rear_wing_damage, 11);
+        assert_eq!(sample.gearbox_damage, 12);
+        assert_eq!(sample.engine_damage, 13);
     }
 
     #[test]

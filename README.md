@@ -123,6 +123,7 @@ cargo run -- \
 F1 25 UDP telemetry is a binary protocol. MOZA Dash Studio exposes named values such as `v1/gameData/Rpm` and `v1/gameData/TyreWearFL`. Those two worlds do not always line up directly.
 
 Full field-by-field comparison is in [docs/f1-25-moza-telemetry-matrix.md](docs/f1-25-moza-telemetry-matrix.md).
+The confirmed mapping subset for F1, LU/LMU, ACE, and ACR is in [docs/confirmed-telemetry-mappings.md](docs/confirmed-telemetry-mappings.md).
 
 Known gap categories:
 
@@ -219,7 +220,7 @@ Implemented:
 - UDP passthrough to MOZA Pit House
 - Experimental tyre wear order remap for `PacketCarDamageData`
 - F1 25 throttle/brake/steer/clutch/DRS/REV/speed/gear/RPM/temperature sample extraction from `PacketCarTelemetryData`
-- F1 25 player lap/session/car status/car damage parsing for analysis
+- F1 25 player lap/session/car status/car damage parsing for analysis and confirmed MOZA key mapping
 - CSV input logging with `--input-log`
 - Completed-lap corner segment CSV logging with `--corner-log`
 - Clean lap detection and Markdown setup-candidate report with `--analysis-report`

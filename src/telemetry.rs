@@ -165,6 +165,8 @@ pub struct LapSample {
     pub result_status: u8,
     pub delta_to_car_in_front_ms: Option<u32>,
     pub delta_to_race_leader_ms: Option<u32>,
+    pub sector1_time_ms: Option<u32>,
+    pub sector2_time_ms: Option<u32>,
 }
 
 #[derive(Clone, Debug, PartialEq)]
@@ -175,6 +177,9 @@ pub struct SessionSample {
     pub track_length_m: u16,
     pub session_type: u8,
     pub track_id: i8,
+    pub track_temp_c: i8,
+    pub air_temp_c: i8,
+    pub session_time_left_s: u16,
 }
 
 #[derive(Clone, Debug, PartialEq)]
@@ -188,6 +193,8 @@ pub struct DamageSample {
     pub front_left_wing_damage: u8,
     pub front_right_wing_damage: u8,
     pub rear_wing_damage: u8,
+    pub gearbox_damage: u8,
+    pub engine_damage: u8,
 }
 
 #[derive(Clone, Debug, PartialEq)]
@@ -205,6 +212,8 @@ pub struct StatusSample {
     pub idle_rpm: u16,
     pub max_gears: u8,
     pub drs_allowed: bool,
+    pub drs_activation_distance_m: u16,
+    pub pit_limiter_active: bool,
     pub actual_tyre_compound: u8,
     pub visual_tyre_compound: u8,
     pub tyres_age_laps: u8,
