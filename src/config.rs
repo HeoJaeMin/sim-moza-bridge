@@ -210,7 +210,7 @@ fn help_text() -> String {
         "Usage: sim-moza-bridge [options]",
         "",
         "Options:",
-        "  --game <auto|f1-25|generic-udp|ace|lmu>",
+        "  --game <auto|f1-25|generic-udp|ace|acr|lmu>",
         "  --listen <port>",
         "  --listen-host <host>",
         "  --moza-host <host>",
@@ -288,6 +288,12 @@ mod tests {
     fn rejects_non_udp_profiles() {
         assert!(
             parse(&["--game", "ace"])
+                .unwrap_err()
+                .to_string()
+                .contains("not a UDP bridge profile")
+        );
+        assert!(
+            parse(&["--game", "acr"])
                 .unwrap_err()
                 .to_string()
                 .contains("not a UDP bridge profile")

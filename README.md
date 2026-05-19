@@ -15,12 +15,15 @@ This is not an official MOZA or EA tool.
 | Auto detect | `auto` | UDP packet detection | Default profile; currently detects F1 25 and otherwise keeps forwarding raw UDP |
 | F1 25 | `f1-25` | UDP passthrough + F1 packet remaps | Explicit F1 25 profile |
 | Generic UDP | `generic-udp` | UDP passthrough only | Use when another tool already exports compatible UDP |
-| Assetto Corsa EVO | `ace` | Documented, adapter pending | Public integrations point to shared memory/helper-server access, not simple UDP |
-| Le Mans Ultimate | `lmu` | Documented, adapter pending | MOZA uses the rF2 shared-memory plugin path |
+| Assetto Corsa EVO | `ace` | Documented, adapter pending | Official updates and public integrations point to shared memory, not simple UDP |
+| Assetto Corsa Rally | `acr` | Documented, adapter pending | MOZA lists telemetry support, but a native/helper reader is still needed for this bridge |
+| Le Mans Ultimate | `lmu` / `lu` | Documented, adapter pending | MOZA lists telemetry support and the digital-dash key matrix includes an LMU column |
 
-ACE and LMU are intentionally listed even though the bridge cannot read them directly yet. They need different input adapters, not just another UDP port.
+ACE, ACR, and LMU are intentionally listed even though the bridge cannot read them directly yet. They need different input adapters, not just another UDP port.
 
-Auto detection is based on incoming telemetry packets, not process names. It can identify F1 25 from the UDP packet header. It cannot identify ACE or LMU until native shared-memory adapters exist or another tool exports their telemetry as UDP.
+Auto detection is based on incoming telemetry packets, not process names. It can identify F1 25 from the UDP packet header. It cannot identify ACE, ACR, or LMU until native shared-memory adapters exist or another tool exports their telemetry as UDP.
+
+See [docs/game-adapter-research.md](docs/game-adapter-research.md) for the ACE, ACR, and LU/LMU telemetry research notes.
 
 ## Requirements
 
@@ -130,7 +133,7 @@ Known gap categories:
 | Status and enum fields | DRS, ERS deploy mode, tyre compounds, pit status, lap invalid state, and result status are numeric game enums. Dashboards often expect booleans, labels, or colors. | Parsed for local HUD/analysis where implemented. MOZA dashboard behavior still depends on Pit House's existing keys. |
 | Lap and gap data | F1 has lap distance, lap number, invalid flags, car position, delta-to-front, and delta-to-leader fields. MOZA may not expose matching keys such as `BehindGap` or `FrontGap`. | Used by the local analysis report. The bridge cannot create new MOZA telemetry keys inside Pit House. |
 | Packet version drift | F1 24 and F1 25 packet layouts differ, even when packet ids look similar. | Analysis parsing is guarded to F1 25 format `2025`; unsupported formats can still pass through but are not parsed for local analysis. |
-| Non-F1 games | ACE and LMU do not present the same F1 UDP packet shape. They need shared-memory/plugin adapters or an external UDP exporter. | Listed as profiles, but native adapters are pending. `generic-udp` only forwards packets from another exporter. |
+| Non-F1 games | ACE, ACR, and LMU do not present the same F1 UDP packet shape. They need shared-memory/plugin adapters or an external UDP exporter. | Listed as profiles, but native adapters are pending. `generic-udp` only forwards packets from another exporter. |
 
 The currently implemented packet-level remap is tyre wear order. In F1 25, wheel arrays are ordered:
 
@@ -192,7 +195,7 @@ The bridge does not register new MOZA keys. For example, it cannot create `v1/ga
 
 | Option | Default | Description |
 | --- | --- | --- |
-| `--game` | `auto` | Game profile: `auto`, `f1-25`, `generic-udp`, `ace`, `lmu` |
+| `--game` | `auto` | Game profile: `auto`, `f1-25`, `generic-udp`, `ace`, `acr`, `lmu` |
 | `--listen` | Profile default | UDP port receiving game packets |
 | `--listen-host` | `127.0.0.1` | Host/interface to bind. Use `0.0.0.0` only when another PC must send telemetry over LAN |
 | `--moza-host` | `127.0.0.1` | MOZA Pit House host |
@@ -221,13 +224,14 @@ Implemented:
 - Completed-lap corner segment CSV logging with `--corner-log`
 - Clean lap detection and Markdown setup-candidate report with `--analysis-report`
 - Local browser HUD with `--hud-http`, REV LEDs, steering bar, and input trace
-- `--game` profile selection with guarded ACE/LMU placeholders
+- `--game` profile selection with guarded ACE/ACR/LMU placeholders
 - Packet-level tests for header parsing and tyre wear remap offsets
 
 Not implemented yet:
 
 - Native ACE shared-memory adapter
-- Native LMU/rFactor shared-memory adapter
+- Native ACR shared-memory/helper adapter
+- Native LMU shared-memory/plugin adapter
 - Behind gap injection into MOZA dashboards
 - F1 25 to F1 24 packet down-conversion
 - Full SimHub-compatible dashboard editor

@@ -13,10 +13,13 @@
 | 자동 감지 | `auto` | UDP 패킷 기반 감지 | 기본값. 현재 F1 25를 감지하고, 알 수 없는 UDP는 그대로 전달합니다 |
 | F1 25 | `f1-25` | UDP passthrough + F1 패킷 보정 | 명시적으로 F1 25만 사용할 때 선택합니다 |
 | Generic UDP | `generic-udp` | UDP passthrough | 외부 도구가 이미 MOZA가 이해할 수 있는 UDP를 만들어줄 때 사용합니다 |
-| Assetto Corsa EVO | `ace` | 문서화만 완료, adapter 미구현 | 단순 UDP가 아니라 shared memory/helper-server 계열 adapter가 필요합니다 |
-| Le Mans Ultimate | `lmu` | 문서화만 완료, adapter 미구현 | MOZA는 rFactor 계열 shared-memory plugin 경로를 사용합니다 |
+| Assetto Corsa EVO | `ace` | 문서화만 완료, adapter 미구현 | 공식 업데이트와 공개 integration 모두 단순 UDP가 아니라 shared memory 계열을 가리킵니다 |
+| Assetto Corsa Rally | `acr` | 문서화만 완료, adapter 미구현 | MOZA는 telemetry 지원을 표시하지만, 이 브리지에는 native/helper reader가 필요합니다 |
+| Le Mans Ultimate | `lmu` / `lu` | 문서화만 완료, adapter 미구현 | MOZA telemetry 지원과 Digital Dash의 LMU key 컬럼이 확인됩니다 |
 
-자동 감지는 실행 중인 프로세스 이름이 아니라 들어오는 텔레메트리 패킷을 기준으로 합니다. 그래서 현재는 F1 25 UDP 패킷만 안정적으로 판별할 수 있습니다.
+자동 감지는 실행 중인 프로세스 이름이 아니라 들어오는 텔레메트리 패킷을 기준으로 합니다. 그래서 현재는 F1 25 UDP 패킷만 안정적으로 판별할 수 있습니다. ACE, ACR, LMU는 native shared-memory adapter 또는 외부 UDP exporter가 생기기 전까지 자동 판별할 수 없습니다.
+
+ACE, ACR, LU/LMU 조사 내용은 [docs/game-adapter-research.md](docs/game-adapter-research.md)에 정리했습니다.
 
 ## 요구 사항
 
@@ -132,7 +135,7 @@ F1 25 UDP는 바이너리 프로토콜입니다. MOZA Dash Studio는 `v1/gameDat
 | 상태와 enum | DRS, ERS deploy mode, 타이어 compound, pit status, invalid lap, result status는 게임 enum입니다. 대시보드는 boolean, label, color를 기대하는 경우가 많습니다. | 구현된 범위에서는 로컬 HUD/분석용으로 파싱합니다. MOZA 대시 동작은 Pit House가 이미 제공하는 key에 의존합니다. |
 | 랩과 gap 데이터 | F1에는 lap distance, lap number, invalid flag, car position, delta-to-front, delta-to-leader가 있습니다. MOZA가 `BehindGap`, `FrontGap` 같은 대응 key를 제공하지 않을 수 있습니다. | 로컬 분석 리포트에서 사용합니다. 브리지가 Pit House 안에 새 MOZA telemetry key를 만들 수는 없습니다. |
 | 패킷 버전 차이 | F1 24와 F1 25는 packet id가 비슷해도 layout이 다릅니다. | 분석 파싱은 F1 25 format `2025`일 때만 수행합니다. 미지원 format은 passthrough될 수 있지만 로컬 분석에는 쓰지 않습니다. |
-| 비-F1 게임 | ACE와 LMU는 F1 UDP와 같은 packet shape가 아닙니다. shared-memory/plugin adapter 또는 외부 UDP exporter가 필요합니다. | 프로필은 등록되어 있지만 native adapter는 아직 미구현입니다. `generic-udp`는 외부 exporter가 만든 패킷만 그대로 전달합니다. |
+| 비-F1 게임 | ACE, ACR, LMU는 F1 UDP와 같은 packet shape가 아닙니다. shared-memory/plugin adapter 또는 외부 UDP exporter가 필요합니다. | 프로필은 등록되어 있지만 native adapter는 아직 미구현입니다. `generic-udp`는 외부 exporter가 만든 패킷만 그대로 전달합니다. |
 
 현재 구현된 packet-level remap은 타이어 웨어 순서 보정입니다. F1 25의 휠 배열은 다음 순서를 씁니다.
 
@@ -187,7 +190,7 @@ v1/gameData/<TelemetryName>
 
 | 옵션 | 기본값 | 설명 |
 | --- | --- | --- |
-| `--game` | `auto` | `auto`, `f1-25`, `generic-udp`, `ace`, `lmu` |
+| `--game` | `auto` | `auto`, `f1-25`, `generic-udp`, `ace`, `acr`, `lmu` |
 | `--listen` | 프로필 기본값 | 게임 UDP를 받는 포트 |
 | `--listen-host` | `127.0.0.1` | 수신 host/interface. 다른 PC에서 LAN으로 보낼 때만 `0.0.0.0` 사용 |
 | `--moza-host` | `127.0.0.1` | MOZA Pit House host |
@@ -216,13 +219,14 @@ v1/gameData/<TelemetryName>
 - `--corner-log` 완료 랩 segment CSV 로깅
 - `--analysis-report` clean lap 판정과 세팅 후보 Markdown 리포트
 - REV LED, steering bar, input trace가 포함된 `--hud-http` 브라우저 HUD
-- ACE/LMU placeholder 프로필과 명확한 에러 메시지
+- ACE/ACR/LMU placeholder 프로필과 명확한 에러 메시지
 - Rust unit test
 
 아직 미구현:
 
 - ACE shared-memory adapter
-- LMU/rFactor shared-memory adapter
+- ACR shared-memory/helper adapter
+- LMU shared-memory/plugin adapter
 - MOZA 대시에 behind gap 새 필드 주입
 - F1 25 -> F1 24 packet down-conversion
 - SimHub 호환 대시보드 에디터

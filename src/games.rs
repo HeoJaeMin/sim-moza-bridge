@@ -21,6 +21,7 @@ pub enum ProtocolKind {
     F1_25,
     OpaqueUdp,
     AssettoCorsaEvo,
+    AssettoCorsaRally,
     LeMansUltimate,
 }
 
@@ -97,8 +98,24 @@ pub const ACE: GameProfile = GameProfile {
     supports_udp_bridge: false,
     supports_tyre_wear_order_fix: false,
     notes: &[
-        "Current public integrations point to shared-memory or helper-server access rather than a simple UDP output.",
-        "A future adapter needs a Windows shared-memory reader or an external UDP exporter.",
+        "ACE exposes telemetry through local shared-memory style integrations, not a simple UDP output.",
+        "Early Access updates can change the shared-memory layout, so a future adapter needs version guards.",
+    ],
+};
+
+pub const ACR: GameProfile = GameProfile {
+    id: "acr",
+    name: "Assetto Corsa Rally",
+    aliases: &["acr", "ac-rally", "assetto-corsa-rally"],
+    input_kind: InputKind::SharedMemory,
+    protocol: ProtocolKind::AssettoCorsaRally,
+    default_listen_port: None,
+    default_moza_port: None,
+    supports_udp_bridge: false,
+    supports_tyre_wear_order_fix: false,
+    notes: &[
+        "MOZA lists telemetry support for ACR, but the digital-dash key matrix does not expose an ACR-specific column yet.",
+        "Public overlay tooling points to a native/helper memory reader path rather than F1-style UDP packets.",
     ],
 };
 
@@ -113,12 +130,12 @@ pub const LMU: GameProfile = GameProfile {
     supports_udp_bridge: false,
     supports_tyre_wear_order_fix: false,
     notes: &[
-        "MOZA Pit House configures LMU through rF2SharedMemoryMapPlugin64.dll in the game's Bin64/Plugins directory.",
-        "A future adapter needs an LMU/rFactor shared-memory reader or an external UDP exporter.",
+        "MOZA lists native telemetry support for LMU and the digital-dash key matrix includes a Le mans ultimate column.",
+        "Some third-party dashboards still use the rF2 shared-memory plugin path, so a future adapter should support native/shared-memory and plugin-backed deployments.",
     ],
 };
 
-pub const GAME_PROFILES: &[GameProfile] = &[AUTO, F1_25, GENERIC_UDP, ACE, LMU];
+pub const GAME_PROFILES: &[GameProfile] = &[AUTO, F1_25, GENERIC_UDP, ACE, ACR, LMU];
 
 pub fn list_game_profile_ids() -> String {
     GAME_PROFILES
@@ -169,6 +186,7 @@ mod tests {
         assert_eq!(resolve_game_profile("F125").unwrap().id, "f1-25");
         assert_eq!(resolve_game_profile("LU").unwrap().id, "lmu");
         assert_eq!(resolve_game_profile("ace").unwrap().id, "ace");
+        assert_eq!(resolve_game_profile("ac-rally").unwrap().id, "acr");
     }
 
     #[test]
@@ -183,6 +201,7 @@ mod tests {
         assert!(assert_udp_bridge_supported(resolve_game_profile("f1-25").unwrap()).is_ok());
         assert!(assert_udp_bridge_supported(resolve_game_profile("generic-udp").unwrap()).is_ok());
         assert!(assert_udp_bridge_supported(resolve_game_profile("ace").unwrap()).is_err());
+        assert!(assert_udp_bridge_supported(resolve_game_profile("acr").unwrap()).is_err());
         assert!(assert_udp_bridge_supported(resolve_game_profile("lmu").unwrap()).is_err());
     }
 }
