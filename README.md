@@ -10,12 +10,15 @@ This is not an official MOZA or EA tool.
 
 | Game | Profile | Current support | Notes |
 | --- | --- | --- | --- |
-| F1 25 | `f1-25` | UDP passthrough + F1 packet remaps | Default profile |
+| Auto detect | `auto` | UDP packet detection | Default profile; currently detects F1 25 and otherwise keeps forwarding raw UDP |
+| F1 25 | `f1-25` | UDP passthrough + F1 packet remaps | Explicit F1 25 profile |
 | Generic UDP | `generic-udp` | UDP passthrough only | Use when another tool already exports compatible UDP |
 | Assetto Corsa EVO | `ace` | Documented, adapter pending | Public integrations point to shared memory/helper-server access, not simple UDP |
 | Le Mans Ultimate | `lmu` | Documented, adapter pending | MOZA uses the rF2 shared-memory plugin path |
 
 ACE and LMU are intentionally listed even though the bridge cannot read them directly yet. They need different input adapters, not just another UDP port.
+
+Auto detection is based on incoming telemetry packets, not process names. It can identify F1 25 from the UDP packet header. It cannot identify ACE or LMU until native shared-memory adapters exist or another tool exports their telemetry as UDP.
 
 ## Requirements
 
@@ -42,25 +45,25 @@ MOZA Pit House normally listens for F1 25 on port `22025`, so the bridge forward
 Passthrough mode sends packets unchanged. Use this first to prove F1 25, the bridge, and Pit House are connected.
 
 ```bash
-npm start -- --game f1-25 --listen 20777 --moza-port 22025 --mode passthrough
+npm start -- --listen 20777 --moza-port 22025 --mode passthrough
 ```
 
 Tyre wear remap mode rewrites `Car Damage` packet tyre wear arrays from F1 wheel order to dashboard-friendly order before forwarding.
 
 ```bash
-npm start -- --game f1-25 --listen 20777 --moza-port 22025 --mode remap --fix-tyre-wear-order
+npm start -- --listen 20777 --moza-port 22025 --mode remap --fix-tyre-wear-order
 ```
 
 Verbose mode prints packet counts and patched packet counts once per second.
 
 ```bash
-npm start -- --game f1-25 --mode remap --fix-tyre-wear-order --verbose
+npm start -- --mode remap --fix-tyre-wear-order --verbose
 ```
 
 Dry run mode parses and patches packets but does not forward them.
 
 ```bash
-npm start -- --game f1-25 --mode remap --fix-tyre-wear-order --dry-run
+npm start -- --mode remap --fix-tyre-wear-order --dry-run
 ```
 
 Generic UDP passthrough can forward packets from any external exporter to any target UDP port. The bridge does not inspect these packets.
@@ -131,7 +134,7 @@ The bridge does not register new MOZA keys. For example, it cannot create `v1/ga
 
 | Option | Default | Description |
 | --- | --- | --- |
-| `--game` | `f1-25` | Game profile: `f1-25`, `generic-udp`, `ace`, `lmu` |
+| `--game` | `auto` | Game profile: `auto`, `f1-25`, `generic-udp`, `ace`, `lmu` |
 | `--listen` | Profile default | UDP port receiving game packets |
 | `--listen-host` | `0.0.0.0` | Host/interface to bind |
 | `--moza-host` | `127.0.0.1` | MOZA Pit House host |
@@ -146,6 +149,7 @@ The bridge does not register new MOZA keys. For example, it cannot create `v1/ga
 Implemented:
 
 - F1 25 packet header parsing
+- UDP packet-based `auto` detection for F1 25
 - UDP passthrough to MOZA Pit House
 - Experimental tyre wear order remap for `PacketCarDamageData`
 - `--game` profile selection with guarded ACE/LMU placeholders

@@ -1,8 +1,9 @@
 import { F1_25_PACKET_FORMAT, PacketId, packetNames } from "./f1/constants.ts";
 import { parsePacketHeader } from "./f1/header.ts";
 import { rewriteAllTyreWearToMozaNamedOrder } from "./f1/carDamage.ts";
+import { detectGameProfileFromPacket } from "./detect.ts";
 import type { BridgeConfig } from "./config.ts";
-import type { ProtocolKind } from "./games.ts";
+import type { GameProfile, ProtocolKind } from "./games.ts";
 
 export type BridgeStats = {
   received: number;
@@ -16,10 +17,12 @@ export type BridgeStats = {
 export type ProcessedPacket = {
   packet: Buffer;
   patched: boolean;
+  detectedGame?: GameProfile;
 };
 
 export class TelemetryBridge {
   private readonly config: Pick<BridgeConfig, "game" | "mode" | "fixTyreWearOrder">;
+  private activeGame: GameProfile;
 
   readonly stats: BridgeStats = {
     received: 0,
@@ -32,15 +35,17 @@ export class TelemetryBridge {
 
   constructor(config: Pick<BridgeConfig, "game" | "mode" | "fixTyreWearOrder">) {
     this.config = config;
+    this.activeGame = config.game;
   }
 
   process(packet: Buffer): ProcessedPacket | null {
     this.stats.received += 1;
 
-    const protocol = this.config.game.protocol;
+    const detectedGame = this.detectActiveGame(packet);
+    const protocol = detectedGame?.protocol ?? this.activeGame.protocol;
 
-    if (protocol === "opaque-udp") {
-      return { packet, patched: false };
+    if (protocol === "auto" || protocol === "opaque-udp") {
+      return { packet, patched: false, detectedGame };
     }
 
     const header = this.parseKnownProtocolHeader(packet, protocol);
@@ -49,12 +54,12 @@ export class TelemetryBridge {
     }
 
     if (this.config.mode === "passthrough") {
-      return { packet, patched: false };
+      return { packet, patched: false, detectedGame };
     }
 
     if (header.packetFormat !== F1_25_PACKET_FORMAT) {
       this.stats.ignored += 1;
-      return { packet, patched: false };
+      return { packet, patched: false, detectedGame };
     }
 
     if (this.config.fixTyreWearOrder && header.packetId === PacketId.CarDamage) {
@@ -63,13 +68,27 @@ export class TelemetryBridge {
 
       if (patched) {
         this.stats.patched += 1;
-        return { packet: patchedPacket, patched: true };
+        return { packet: patchedPacket, patched: true, detectedGame };
       }
 
       this.stats.malformed += 1;
     }
 
-    return { packet, patched: false };
+    return { packet, patched: false, detectedGame };
+  }
+
+  private detectActiveGame(packet: Buffer): GameProfile | undefined {
+    if (this.activeGame.protocol !== "auto") {
+      return undefined;
+    }
+
+    const detectedGame = detectGameProfileFromPacket(packet);
+    if (!detectedGame) {
+      return undefined;
+    }
+
+    this.activeGame = detectedGame;
+    return detectedGame;
   }
 
   private parseKnownProtocolHeader(packet: Buffer, protocol: ProtocolKind): ReturnType<typeof parsePacketHeader> {

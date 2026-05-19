@@ -13,6 +13,10 @@ export async function startUdpBridge(config: BridgeConfig): Promise<void> {
       return;
     }
 
+    if (result.detectedGame) {
+      console.log(`[detect] game=${result.detectedGame.id} (${result.detectedGame.name})`);
+    }
+
     if (config.dryRun) {
       return;
     }

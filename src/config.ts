@@ -48,7 +48,7 @@ function parseMode(value: string | boolean | undefined): BridgeMode {
 export function readConfig(): BridgeConfig {
   const { values } = parseArgs({
     options: {
-      game: { type: "string", default: "f1-25" },
+      game: { type: "string", default: "auto" },
       "listen-host": { type: "string", default: "0.0.0.0" },
       listen: { type: "string" },
       "moza-host": { type: "string", default: "127.0.0.1" },
@@ -65,7 +65,7 @@ export function readConfig(): BridgeConfig {
   assertUdpBridgeSupported(game);
 
   if (Boolean(values["fix-tyre-wear-order"]) && !game.supportsTyreWearOrderFix) {
-    throw new Error(`--fix-tyre-wear-order is only supported for game profiles with an F1 wheel-array parser.`);
+    throw new Error(`--fix-tyre-wear-order is only supported for F1-compatible or auto-detected profiles.`);
   }
 
   return {

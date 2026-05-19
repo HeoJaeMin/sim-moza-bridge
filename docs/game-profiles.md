@@ -6,10 +6,28 @@ The bridge is now organized around game profiles. A profile describes the input 
 
 | Profile | Game | Input | Bridge status |
 | --- | --- | --- | --- |
+| `auto` | Packet-based detection | UDP packets | Supported for F1 25 detection |
 | `f1-25` | F1 25 | UDP binary packets | Supported |
 | `generic-udp` | Any external UDP exporter | UDP packets | Passthrough only |
 | `ace` | Assetto Corsa EVO | Shared memory / helper-server style integrations | Adapter pending |
 | `lmu` | Le Mans Ultimate | rFactor/LMU shared memory plugin path | Adapter pending |
+
+## Detection Boundary
+
+`--game auto` inspects incoming telemetry packets. It is not a process scanner.
+
+Supported today:
+
+- F1 25 packet header -> selects `f1-25`
+- Unknown UDP packet -> forwards as raw UDP for that packet and keeps waiting for a recognizable packet
+
+Not supported yet:
+
+- Detecting ACE from the Windows process list
+- Detecting LMU from the Windows process list
+- Reading shared-memory telemetry automatically
+
+Process detection can be added later for UI convenience, but it is not enough by itself. The bridge needs the actual telemetry protocol to parse or transform data safely.
 
 ## Why ACE and LMU Are Different
 
@@ -60,7 +78,7 @@ Output adapters:
 For F1 25:
 
 ```bash
-npm start -- --game f1-25 --mode remap --fix-tyre-wear-order
+npm start -- --mode remap --fix-tyre-wear-order
 ```
 
 For an external exporter that already emits compatible packets:

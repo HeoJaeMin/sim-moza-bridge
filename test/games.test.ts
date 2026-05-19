@@ -3,6 +3,7 @@ import assert from "node:assert/strict";
 import { assertUdpBridgeSupported, resolveGameProfile } from "../src/games.ts";
 
 test("resolveGameProfile accepts canonical ids and aliases", () => {
+  assert.equal(resolveGameProfile("auto").id, "auto");
   assert.equal(resolveGameProfile("f1-25").id, "f1-25");
   assert.equal(resolveGameProfile("F125").id, "f1-25");
   assert.equal(resolveGameProfile("ace").id, "ace");
@@ -10,6 +11,7 @@ test("resolveGameProfile accepts canonical ids and aliases", () => {
 });
 
 test("assertUdpBridgeSupported allows UDP profiles and rejects non-UDP profiles", () => {
+  assert.doesNotThrow(() => assertUdpBridgeSupported(resolveGameProfile("auto")));
   assert.doesNotThrow(() => assertUdpBridgeSupported(resolveGameProfile("f1-25")));
   assert.doesNotThrow(() => assertUdpBridgeSupported(resolveGameProfile("generic-udp")));
   assert.throws(() => assertUdpBridgeSupported(resolveGameProfile("ace")), /not a UDP bridge profile/);

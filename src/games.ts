@@ -1,5 +1,5 @@
 export type InputKind = "udp" | "shared-memory" | "plugin-shared-memory";
-export type ProtocolKind = "f1-25" | "opaque-udp" | "assetto-corsa-evo" | "le-mans-ultimate";
+export type ProtocolKind = "auto" | "f1-25" | "opaque-udp" | "assetto-corsa-evo" | "le-mans-ultimate";
 
 export type GameProfile = {
   id: string;
@@ -15,6 +15,21 @@ export type GameProfile = {
 };
 
 export const gameProfiles: GameProfile[] = [
+  {
+    id: "auto",
+    name: "Auto detect",
+    aliases: ["auto", "detect", "auto-detect"],
+    inputKind: "udp",
+    protocol: "auto",
+    defaultListenPort: 20777,
+    defaultMozaPort: 22025,
+    supportsUdpBridge: true,
+    supportsTyreWearOrderFix: true,
+    notes: [
+      "Detects supported games from incoming UDP packets.",
+      "Currently recognizes F1 25 packets and falls back to generic UDP passthrough for unknown packets."
+    ]
+  },
   {
     id: "f1-25",
     name: "F1 25",
