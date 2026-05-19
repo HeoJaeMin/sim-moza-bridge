@@ -1,23 +1,23 @@
 # Sim MOZA Bridge
 
-[English README](README.md)
-
 시뮬레이싱 게임 텔레메트리를 받아 MOZA Pit House로 넘기고, 일부 패킷 보정, 로깅, HUD, 분석을 실험하는 Rust 기반 브리지입니다. 현재 가장 잘 지원되는 대상은 F1 25 UDP 텔레메트리입니다.
 
 이 프로젝트는 MOZA 또는 EA의 공식 도구가 아닙니다.
+
+HTML로 읽기 좋은 문서는 [README.html](README.html)에서 볼 수 있습니다.
 
 ## 지원 프로필
 
 | 게임 | 프로필 | 현재 지원 상태 | 비고 |
 | --- | --- | --- | --- |
 | 자동 감지 | `auto` | UDP 패킷 기반 감지 | 기본값. 현재 F1 25를 감지하고, 알 수 없는 UDP는 그대로 전달합니다 |
-| F1 25 | `f1-25` | UDP passthrough + F1 패킷 보정 | 명시적으로 F1 25만 사용할 때 선택합니다 |
-| Generic UDP | `generic-udp` | UDP passthrough | 외부 도구가 이미 MOZA가 이해할 수 있는 UDP를 만들어줄 때 사용합니다 |
-| Assetto Corsa EVO | `ace` | 문서화만 완료, adapter 미구현 | 공식 업데이트와 공개 integration 모두 단순 UDP가 아니라 shared memory 계열을 가리킵니다 |
-| Assetto Corsa Rally | `acr` | 문서화만 완료, adapter 미구현 | MOZA는 telemetry 지원을 표시하지만, 이 브리지에는 native/helper reader가 필요합니다 |
-| Le Mans Ultimate | `lmu` / `lu` | 문서화만 완료, adapter 미구현 | MOZA telemetry 지원과 Digital Dash의 LMU key 컬럼이 확인됩니다 |
+| F1 25 | `f1-25` | UDP 그대로 전달 + F1 패킷 보정 | 명시적으로 F1 25만 사용할 때 선택합니다 |
+| 일반 UDP | `generic-udp` | UDP 그대로 전달 | 외부 도구가 이미 MOZA가 이해할 수 있는 UDP를 만들어줄 때 사용합니다 |
+| Assetto Corsa EVO | `ace` | 문서화만 완료, 어댑터 미구현 | 공식 업데이트와 공개 연동 문서 모두 단순 UDP가 아니라 공유 메모리 계열을 가리킵니다 |
+| Assetto Corsa Rally | `acr` | 문서화만 완료, 어댑터 미구현 | MOZA는 텔레메트리 지원을 표시하지만, 이 브리지에는 네이티브 리더 또는 보조 리더가 필요합니다 |
+| Le Mans Ultimate | `lmu` / `lu` | 문서화만 완료, 어댑터 미구현 | MOZA 텔레메트리 지원과 Digital Dash의 LMU 키 컬럼이 확인됩니다 |
 
-자동 감지는 실행 중인 프로세스 이름이 아니라 들어오는 텔레메트리 패킷을 기준으로 합니다. 그래서 현재는 F1 25 UDP 패킷만 안정적으로 판별할 수 있습니다. ACE, ACR, LMU는 native shared-memory adapter 또는 외부 UDP exporter가 생기기 전까지 자동 판별할 수 없습니다.
+자동 감지는 실행 중인 프로세스 이름이 아니라 들어오는 텔레메트리 패킷을 기준으로 합니다. 그래서 현재는 F1 25 UDP 패킷만 안정적으로 판별할 수 있습니다. ACE, ACR, LMU는 네이티브 공유 메모리 어댑터 또는 외부 UDP 익스포터가 생기기 전까지 자동 판별할 수 없습니다.
 
 ACE, ACR, LU/LMU 조사 내용은 [docs/game-adapter-research.md](docs/game-adapter-research.md)에 정리했습니다.
 
@@ -31,7 +31,7 @@ ACE, ACR, LU/LMU 조사 내용은 [docs/game-adapter-research.md](docs/game-adap
 
 ## F1 25 설정
 
-F1 25의 Telemetry Settings에서 다음처럼 설정합니다.
+F1 25의 텔레메트리 설정에서 다음처럼 설정합니다.
 
 | 항목 | 값 |
 | --- | --- |
@@ -45,13 +45,13 @@ MOZA Pit House는 F1 25 텔레메트리 입력으로 보통 `22025` 포트를 �
 
 ## 사용법
 
-기본 passthrough:
+기본 그대로 전달:
 
 ```bash
 cargo run -- --listen 20777 --moza-port 22025 --mode passthrough
 ```
 
-배포된 exe로 실행:
+배포된 실행 파일로 실행:
 
 ```powershell
 .\sim-moza-bridge.exe --listen 20777 --moza-port 22025 --mode passthrough
@@ -63,19 +63,19 @@ F1 25 타이어 웨어 순서 보정:
 cargo run -- --listen 20777 --moza-port 22025 --mode remap --fix-tyre-wear-order
 ```
 
-verbose 출력:
+자세한 출력:
 
 ```bash
 cargo run -- --mode remap --fix-tyre-wear-order --verbose
 ```
 
-dry-run:
+모의 실행:
 
 ```bash
 cargo run -- --mode remap --fix-tyre-wear-order --dry-run
 ```
 
-외부 exporter가 만든 UDP를 그대로 전달:
+외부 익스포터가 만든 UDP를 그대로 전달:
 
 ```bash
 cargo run -- --game generic-udp --listen 20777 --moza-port 22025 --mode passthrough
@@ -83,7 +83,7 @@ cargo run -- --game generic-udp --listen 20777 --moza-port 22025 --mode passthro
 
 ## 입력 로깅, HUD, 분석
 
-F1 25의 `PacketCarTelemetryData`에서 throttle, brake, steer, clutch, DRS, REV, speed, gear, RPM, 온도 값을 추출합니다.
+F1 25의 `PacketCarTelemetryData`에서 스로틀, 브레이크, 조향, 클러치, DRS, REV, 속도, 기어, RPM, 온도 값을 추출합니다.
 
 CSV 로깅:
 
@@ -105,7 +105,7 @@ http://127.0.0.1:8765
 
 HUD는 약 60Hz 기준으로 화면을 갱신합니다. 사람이 보는 throttle/brake 바는 60Hz면 충분하고, 120Hz 이상은 화면 표시보다 고주파 로깅이나 분석 쪽에 더 의미가 있습니다.
 
-랩 분석은 완료된 랩을 20개 거리 segment로 나눠 CSV와 Markdown 리포트를 만듭니다.
+랩 분석은 완료된 랩을 20개 거리 구간으로 나눠 CSV와 Markdown 리포트를 만듭니다.
 
 ```bash
 cargo run -- \
@@ -116,29 +116,29 @@ cargo run -- \
   --analysis-report analysis.md
 ```
 
-`--corner-log`는 완료된 랩의 segment별 속도, 브레이크, 스로틀, 조향 요약을 CSV로 누적합니다. `--analysis-report`는 랩이 끝날 때마다 최신 Markdown 리포트를 덮어씁니다. 리포트에는 clean lap 여부, 타이어 웨어, 현재 연료/브레이크 바이어스/ERS 상태, 세팅 후보가 들어갑니다.
+`--corner-log`는 완료된 랩의 구간별 속도, 브레이크, 스로틀, 조향 요약을 CSV로 누적합니다. `--analysis-report`는 랩이 끝날 때마다 최신 Markdown 리포트를 덮어씁니다. 리포트에는 클린 랩 여부, 타이어 웨어, 현재 연료/브레이크 바이어스/ERS 상태, 세팅 후보가 들어갑니다.
 
-세팅 추천은 자동 정답이 아니라 후보입니다. 예를 들어 mid-corner 조향량과 앞 타이어 웨어/온도가 높으면 front grip 후보를, corner exit에서 스로틀과 조향 보정이 같이 커지면 rear traction 후보를 제안합니다. 같은 연료량, 같은 타이어 age에서 A/B 테스트로 확인해야 합니다.
+세팅 추천은 자동 정답이 아니라 후보입니다. 예를 들어 코너 중반 조향량과 앞 타이어 웨어/온도가 높으면 앞 그립 후보를, 코너 탈출에서 스로틀과 조향 보정이 같이 커지면 뒤 트랙션 후보를 제안합니다. 같은 연료량, 같은 타이어 사용 랩 수에서 A/B 테스트로 확인해야 합니다.
 
 ## 텔레메트리 호환 차이
 
 F1 25 UDP는 바이너리 프로토콜입니다. MOZA Dash Studio는 `v1/gameData/Rpm`, `v1/gameData/TyreWearFL` 같은 이름 기반 값을 노출합니다. 두 형식이 항상 1:1로 맞지는 않습니다.
 
-전체 field 비교표는 [docs/f1-25-moza-telemetry-matrix.md](docs/f1-25-moza-telemetry-matrix.md)에 정리했습니다.
-F1, LU/LMU, ACE, ACR 중 확실히 매핑할 수 있는 subset은 [docs/confirmed-telemetry-mappings.md](docs/confirmed-telemetry-mappings.md)에 분리했습니다.
+전체 필드 비교표는 [docs/f1-25-moza-telemetry-matrix.md](docs/f1-25-moza-telemetry-matrix.md)에 정리했습니다.
+F1, LU/LMU, ACE, ACR 중 확실히 매핑할 수 있는 하위 집합은 [docs/confirmed-telemetry-mappings.md](docs/confirmed-telemetry-mappings.md)에 분리했습니다.
 
 알려진 차이 범주는 다음과 같습니다.
 
 | 영역 | 왜 문제가 되는가 | 현재 브리지 동작 |
 | --- | --- | --- |
-| 휠 배열 | F1 휠 배열은 `RL, RR, FL, FR` 순서이고, 대시보드 key는 보통 `FL, FR, RL, RR` 이름 기준입니다. 타이어 웨어뿐 아니라 타이어 데미지, 타이어 온도, 타이어 압력, 브레이크 온도에도 영향을 줄 수 있습니다. | 내부 로깅/HUD 파서는 F1 휠 배열을 이름 기준 corner로 매핑합니다. 패킷 forwarding에서 실제로 고치는 값은 현재 `--fix-tyre-wear-order`의 타이어 웨어뿐입니다. |
-| 단위와 파생값 | F1 패킷은 ERS 저장 에너지, fuel in tank, fuel remaining laps, rev-light percent, 온도처럼 raw/game-specific 값을 냅니다. MOZA key는 percent, laps, label, normalized value일 수 있습니다. | 로컬 HUD/report에서는 표시용 값을 일부 파생합니다. forwarding 패킷은 명시적인 remap 기능 외에는 전체 단위 변환을 하지 않습니다. |
-| 상태와 enum | DRS, ERS deploy mode, 타이어 compound, pit status, invalid lap, result status는 게임 enum입니다. 대시보드는 boolean, label, color를 기대하는 경우가 많습니다. | 구현된 범위에서는 로컬 HUD/분석용으로 파싱합니다. MOZA 대시 동작은 Pit House가 이미 제공하는 key에 의존합니다. |
-| 랩과 gap 데이터 | F1에는 lap distance, lap number, invalid flag, car position, delta-to-front, delta-to-leader가 있습니다. MOZA가 `BehindGap`, `FrontGap` 같은 대응 key를 제공하지 않을 수 있습니다. | 로컬 분석 리포트에서 사용합니다. 브리지가 Pit House 안에 새 MOZA telemetry key를 만들 수는 없습니다. |
-| 패킷 버전 차이 | F1 24와 F1 25는 packet id가 비슷해도 layout이 다릅니다. | 분석 파싱은 F1 25 format `2025`일 때만 수행합니다. 미지원 format은 passthrough될 수 있지만 로컬 분석에는 쓰지 않습니다. |
-| 비-F1 게임 | ACE, ACR, LMU는 F1 UDP와 같은 packet shape가 아닙니다. shared-memory/plugin adapter 또는 외부 UDP exporter가 필요합니다. | 프로필은 등록되어 있지만 native adapter는 아직 미구현입니다. `generic-udp`는 외부 exporter가 만든 패킷만 그대로 전달합니다. |
+| 휠 배열 | F1 휠 배열은 `RL, RR, FL, FR` 순서이고, 대시보드 키는 보통 `FL, FR, RL, RR` 이름 기준입니다. 타이어 웨어뿐 아니라 타이어 데미지, 타이어 온도, 타이어 압력, 브레이크 온도에도 영향을 줄 수 있습니다. | 내부 로깅/HUD 파서는 F1 휠 배열을 이름 기준 코너로 매핑합니다. 패킷 전달에서 실제로 고치는 값은 현재 `--fix-tyre-wear-order`의 타이어 웨어뿐입니다. |
+| 단위와 파생값 | F1 패킷은 ERS 저장 에너지, 탱크 연료량, 남은 연료 랩 수, REV 라이트 퍼센트, 온도처럼 원본/게임별 값을 냅니다. MOZA 키는 퍼센트, 랩 수, 라벨, 정규화된 값일 수 있습니다. | 로컬 HUD/리포트에서는 표시용 값을 일부 파생합니다. 전달 패킷은 명시적인 재매핑 기능 외에는 전체 단위 변환을 하지 않습니다. |
+| 상태와 열거값 | DRS, ERS 배포 모드, 타이어 컴파운드, 피트 상태, 무효 랩, 결과 상태는 게임 열거값입니다. 대시보드는 불리언, 라벨, 색상을 기대하는 경우가 많습니다. | 구현된 범위에서는 로컬 HUD/분석용으로 파싱합니다. MOZA 대시 동작은 Pit House가 이미 제공하는 키에 의존합니다. |
+| 랩과 차간 데이터 | F1에는 랩 거리, 랩 번호, 무효 플래그, 차량 순위, 앞차와의 차이, 선두와의 차이가 있습니다. MOZA가 `BehindGap`, `FrontGap` 같은 대응 키를 제공하지 않을 수 있습니다. | 로컬 분석 리포트에서 사용합니다. 브리지가 Pit House 안에 새 MOZA 텔레메트리 키를 만들 수는 없습니다. |
+| 패킷 버전 차이 | F1 24와 F1 25는 패킷 ID가 비슷해도 구조가 다릅니다. | 분석 파싱은 F1 25 형식 `2025`일 때만 수행합니다. 미지원 형식은 그대로 전달될 수 있지만 로컬 분석에는 쓰지 않습니다. |
+| 비-F1 게임 | ACE, ACR, LMU는 F1 UDP와 같은 패킷 구조가 아닙니다. 공유 메모리/플러그인 어댑터 또는 외부 UDP 익스포터가 필요합니다. | 프로필은 등록되어 있지만 네이티브 어댑터는 아직 미구현입니다. `generic-udp`는 외부 익스포터가 만든 패킷만 그대로 전달합니다. |
 
-현재 구현된 packet-level remap은 타이어 웨어 순서 보정입니다. F1 25의 휠 배열은 다음 순서를 씁니다.
+현재 구현된 패킷 단위 재매핑은 타이어 웨어 순서 보정입니다. F1 25의 휠 배열은 다음 순서를 씁니다.
 
 ```text
 0 = RL
@@ -176,16 +176,16 @@ v1/gameData/<TelemetryName>
 
 | 표시 | 바인딩 |
 | --- | --- |
-| Gear | `Telemetry.get("v1/gameData/Gear").value` |
+| 기어 | `Telemetry.get("v1/gameData/Gear").value` |
 | RPM | `Telemetry.get("v1/gameData/Rpm").value` |
-| Speed | `Telemetry.get("v1/gameData/SpeedKmh").value` |
+| 속도 | `Telemetry.get("v1/gameData/SpeedKmh").value` |
 | DRS | `Telemetry.get("v1/gameData/Drs").value` |
 | ERS | `Telemetry.get("v1/gameData/ERSPercent").value` |
-| Fuel laps | `Telemetry.get("v1/gameData/FuelRemainLaps").value` |
-| Brake bias | `Telemetry.get("v1/gameData/BrakeBias").value` |
-| Front-left tyre wear | `Telemetry.get("v1/gameData/TyreWearFL").value` |
+| 연료 잔여 랩 | `Telemetry.get("v1/gameData/FuelRemainLaps").value` |
+| 브레이크 바이어스 | `Telemetry.get("v1/gameData/BrakeBias").value` |
+| 좌측 앞 타이어 웨어 | `Telemetry.get("v1/gameData/TyreWearFL").value` |
 
-이 브리지는 새 MOZA key를 등록하지 않습니다. 예를 들어 Pit House가 `v1/gameData/BehindGap`을 제공하지 않는다면, 브리지만으로 그 key를 새로 만들 수는 없습니다. 브리지는 Pit House가 읽는 기존 게임 패킷 값을 바꾸거나 전달할 수 있습니다.
+이 브리지는 새 MOZA 키를 등록하지 않습니다. 예를 들어 Pit House가 `v1/gameData/BehindGap`을 제공하지 않는다면, 브리지만으로 그 키를 새로 만들 수는 없습니다. 브리지는 Pit House가 읽는 기존 게임 패킷 값을 바꾸거나 전달할 수 있습니다.
 
 ## 옵션
 
@@ -193,8 +193,8 @@ v1/gameData/<TelemetryName>
 | --- | --- | --- |
 | `--game` | `auto` | `auto`, `f1-25`, `generic-udp`, `ace`, `acr`, `lmu` |
 | `--listen` | 프로필 기본값 | 게임 UDP를 받는 포트 |
-| `--listen-host` | `127.0.0.1` | 수신 host/interface. 다른 PC에서 LAN으로 보낼 때만 `0.0.0.0` 사용 |
-| `--moza-host` | `127.0.0.1` | MOZA Pit House host |
+| `--listen-host` | `127.0.0.1` | 수신 호스트/인터페이스. 다른 PC에서 LAN으로 보낼 때만 `0.0.0.0` 사용 |
+| `--moza-host` | `127.0.0.1` | MOZA Pit House 호스트 |
 | `--moza-port` | 프로필 기본값 | MOZA Pit House 대상 포트 |
 | `--mode` | `passthrough` | `passthrough` 또는 `remap` |
 | `--fix-tyre-wear-order` | `false` | F1 25 `m_tyresWear[4]` 순서 보정 |
@@ -210,29 +210,29 @@ v1/gameData/<TelemetryName>
 
 구현됨:
 
-- F1 25 packet header parsing
-- F1 25 UDP packet 기반 `auto` 감지
-- MOZA Pit House로 UDP passthrough
+- F1 25 패킷 헤더 파싱
+- F1 25 UDP 패킷 기반 `auto` 감지
+- MOZA Pit House로 UDP 그대로 전달
 - `PacketCarDamageData` 타이어 웨어 순서 보정
 - `PacketCarTelemetryData`에서 throttle/brake/steer/clutch/DRS/REV/speed/gear/RPM/온도 추출
-- 분석용 player lap/session/car status/car damage parsing과 확정 MOZA key mapping
+- 분석용 플레이어 랩/세션/차량 상태/차량 손상 파싱과 확정 MOZA 키 매핑
 - `--input-log` CSV 로깅
 - `--corner-log` 완료 랩 segment CSV 로깅
-- `--analysis-report` clean lap 판정과 세팅 후보 Markdown 리포트
+- `--analysis-report` 클린 랩 판정과 세팅 후보 Markdown 리포트
 - REV LED, steering bar, input trace가 포함된 `--hud-http` 브라우저 HUD
 - ACE/ACR/LMU placeholder 프로필과 명확한 에러 메시지
 - Rust unit test
 
 아직 미구현:
 
-- ACE shared-memory adapter
-- ACR shared-memory/helper adapter
-- LMU shared-memory/plugin adapter
-- MOZA 대시에 behind gap 새 필드 주입
-- F1 25 -> F1 24 packet down-conversion
+- ACE 공유 메모리 어댑터
+- ACR 공유 메모리/보조 리더 어댑터
+- LMU 공유 메모리/플러그인 어댑터
+- MOZA 대시에 뒤차와의 차간 필드 주입
+- F1 25 -> F1 24 패킷 하위 버전 변환
 - SimHub 호환 대시보드 에디터
 - Mission R OLED 직접 렌더링
-- 서명된 Windows installer/release pipeline
+- 서명된 Windows 설치 파일/릴리스 파이프라인
 
 ## 안전 메모
 

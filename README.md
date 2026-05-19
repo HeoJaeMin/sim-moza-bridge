@@ -1,111 +1,111 @@
 # Sim MOZA Bridge
 
-[한국어 README](README.ko.md)
+시뮬레이싱 게임 텔레메트리를 받아 MOZA Pit House로 넘기고, 일부 패킷 보정, 로깅, HUD, 분석을 실험하는 Rust 기반 브리지입니다. 현재 가장 잘 지원되는 대상은 F1 25 UDP 텔레메트리입니다.
 
-Experimental game-profile telemetry bridge for forwarding sim racing telemetry to MOZA Pit House and testing packet-level remaps, logging, HUDs, and analysis for MOZA dashboards.
+이 프로젝트는 MOZA 또는 EA의 공식 도구가 아닙니다.
 
-The first fully supported adapter is F1 25 over UDP. The first shipped packet remap fixes tyre wear order, but tyre wear is only one compatibility gap. F1 UDP packets, MOZA dashboard keys, and other sims do not share one universal telemetry shape.
+HTML로 읽기 좋은 문서는 [README.html](README.html)에서 볼 수 있습니다.
 
-This is not an official MOZA or EA tool.
+## 지원 프로필
 
-## Game Profiles
-
-| Game | Profile | Current support | Notes |
+| 게임 | 프로필 | 현재 지원 상태 | 비고 |
 | --- | --- | --- | --- |
-| Auto detect | `auto` | UDP packet detection | Default profile; currently detects F1 25 and otherwise keeps forwarding raw UDP |
-| F1 25 | `f1-25` | UDP passthrough + F1 packet remaps | Explicit F1 25 profile |
-| Generic UDP | `generic-udp` | UDP passthrough only | Use when another tool already exports compatible UDP |
-| Assetto Corsa EVO | `ace` | Documented, adapter pending | Official updates and public integrations point to shared memory, not simple UDP |
-| Assetto Corsa Rally | `acr` | Documented, adapter pending | MOZA lists telemetry support, but a native/helper reader is still needed for this bridge |
-| Le Mans Ultimate | `lmu` / `lu` | Documented, adapter pending | MOZA lists telemetry support and the digital-dash key matrix includes an LMU column |
+| 자동 감지 | `auto` | UDP 패킷 기반 감지 | 기본값. 현재 F1 25를 감지하고, 알 수 없는 UDP는 그대로 전달합니다 |
+| F1 25 | `f1-25` | UDP 그대로 전달 + F1 패킷 보정 | 명시적으로 F1 25만 사용할 때 선택합니다 |
+| 일반 UDP | `generic-udp` | UDP 그대로 전달 | 외부 도구가 이미 MOZA가 이해할 수 있는 UDP를 만들어줄 때 사용합니다 |
+| Assetto Corsa EVO | `ace` | 문서화만 완료, 어댑터 미구현 | 공식 업데이트와 공개 연동 문서 모두 단순 UDP가 아니라 공유 메모리 계열을 가리킵니다 |
+| Assetto Corsa Rally | `acr` | 문서화만 완료, 어댑터 미구현 | MOZA는 텔레메트리 지원을 표시하지만, 이 브리지에는 네이티브 리더 또는 보조 리더가 필요합니다 |
+| Le Mans Ultimate | `lmu` / `lu` | 문서화만 완료, 어댑터 미구현 | MOZA 텔레메트리 지원과 Digital Dash의 LMU 키 컬럼이 확인됩니다 |
 
-ACE, ACR, and LMU are intentionally listed even though the bridge cannot read them directly yet. They need different input adapters, not just another UDP port.
+자동 감지는 실행 중인 프로세스 이름이 아니라 들어오는 텔레메트리 패킷을 기준으로 합니다. 그래서 현재는 F1 25 UDP 패킷만 안정적으로 판별할 수 있습니다. ACE, ACR, LMU는 네이티브 공유 메모리 어댑터 또는 외부 UDP 익스포터가 생기기 전까지 자동 판별할 수 없습니다.
 
-Auto detection is based on incoming telemetry packets, not process names. It can identify F1 25 from the UDP packet header. It cannot identify ACE, ACR, or LMU until native shared-memory adapters exist or another tool exports their telemetry as UDP.
+ACE, ACR, LU/LMU 조사 내용은 [docs/game-adapter-research.md](docs/game-adapter-research.md)에 정리했습니다.
 
-See [docs/game-adapter-research.md](docs/game-adapter-research.md) for the ACE, ACR, and LU/LMU telemetry research notes.
+## 요구 사항
 
-## Requirements
+- 대상 게임과 MOZA Pit House가 실행되는 Windows PC
+- 소스에서 직접 빌드할 경우 Rust 1.95 이상
+- UDP 기반 프로필의 경우 게임 내 UDP 텔레메트리 활성화
 
-- Windows PC running the target sim and MOZA Pit House
-- Rust 1.95 or newer only when building from source
-- UDP telemetry enabled for UDP-backed profiles
+집 PC에서 일반 실행만 할 때는 `sim-moza-bridge.exe`만 있으면 됩니다. Rust toolchain은 개발하거나 다시 빌드할 때만 필요합니다.
 
-For normal home use, download or build `sim-moza-bridge.exe` and run that binary directly. Rust is not required on the gaming PC unless you are developing or rebuilding the project.
+## F1 25 설정
 
-## F1 25 Settings
+F1 25의 텔레메트리 설정에서 다음처럼 설정합니다.
 
-Set F1 25 telemetry to send packets to the bridge:
-
-| Setting | Value |
+| 항목 | 값 |
 | --- | --- |
 | UDP Telemetry | On |
 | UDP IP Address | `127.0.0.1` |
 | UDP Port | `20777` |
-| UDP Send Rate | `60Hz` recommended for HUD smoothness; `20Hz` for maximum stability; `120Hz` experimental if the game allows it |
+| UDP Send Rate | HUD 부드러움 기준 `60Hz` 권장, 안정성 우선이면 `20Hz`, `120Hz`는 게임이 허용할 때 실험용 |
 | UDP Format | `2025` |
 
-MOZA Pit House normally listens for F1 25 on port `22025`, so the bridge forwards there by default.
+MOZA Pit House는 F1 25 텔레메트리 입력으로 보통 `22025` 포트를 기대하므로, 브리지는 기본적으로 `20777`에서 받아 `22025`로 전달합니다.
 
-## Usage
+## 사용법
 
-Passthrough mode sends packets unchanged. Use this first to prove F1 25, the bridge, and Pit House are connected.
+기본 그대로 전달:
 
 ```bash
 cargo run -- --listen 20777 --moza-port 22025 --mode passthrough
 ```
 
-Installed or release binary:
+배포된 실행 파일로 실행:
 
 ```powershell
 .\sim-moza-bridge.exe --listen 20777 --moza-port 22025 --mode passthrough
 ```
 
-Tyre wear remap mode rewrites `Car Damage` packet tyre wear arrays from F1 wheel order to dashboard-friendly order before forwarding.
+F1 25 타이어 웨어 순서 보정:
 
 ```bash
 cargo run -- --listen 20777 --moza-port 22025 --mode remap --fix-tyre-wear-order
 ```
 
-Verbose mode prints packet counts and patched packet counts once per second.
+자세한 출력:
 
 ```bash
 cargo run -- --mode remap --fix-tyre-wear-order --verbose
 ```
 
-Dry run mode parses and patches packets but does not forward them.
+모의 실행:
 
 ```bash
 cargo run -- --mode remap --fix-tyre-wear-order --dry-run
 ```
 
-Generic UDP passthrough can forward packets from any external exporter to any target UDP port. The bridge does not inspect these packets.
+외부 익스포터가 만든 UDP를 그대로 전달:
 
 ```bash
 cargo run -- --game generic-udp --listen 20777 --moza-port 22025 --mode passthrough
 ```
 
-Input logging writes F1 25 throttle/brake/steering samples to CSV:
+## 입력 로깅, HUD, 분석
+
+F1 25의 `PacketCarTelemetryData`에서 스로틀, 브레이크, 조향, 클러치, DRS, REV, 속도, 기어, RPM, 온도 값을 추출합니다.
+
+CSV 로깅:
 
 ```bash
 cargo run -- --mode remap --fix-tyre-wear-order --input-log inputs.csv
 ```
 
-The lightweight HUD exposes a browser page with throttle/brake/steering bars, REV LEDs, DRS state, and a rolling input trace:
+브라우저 HUD는 throttle/brake/steer 바, REV LED, DRS 상태, 입력 trace를 표시합니다.
 
 ```bash
 cargo run -- --hud-http 8765 --input-log inputs.csv
 ```
 
-Then open:
+브라우저에서 엽니다.
 
 ```text
 http://127.0.0.1:8765
 ```
 
-The HUD polls at roughly 60Hz. Higher game UDP rates can be useful for logging, but the default browser HUD is tuned for human-visible smoothness rather than high-frequency analysis.
+HUD는 약 60Hz 기준으로 화면을 갱신합니다. 사람이 보는 throttle/brake 바는 60Hz면 충분하고, 120Hz 이상은 화면 표시보다 고주파 로깅이나 분석 쪽에 더 의미가 있습니다.
 
-Lap analysis writes 20 distance-based segment summaries and a latest-lap Markdown report:
+랩 분석은 완료된 랩을 20개 거리 구간으로 나눠 CSV와 Markdown 리포트를 만듭니다.
 
 ```bash
 cargo run -- \
@@ -116,27 +116,29 @@ cargo run -- \
   --analysis-report analysis.md
 ```
 
-`--corner-log` appends a CSV row for each segment of every completed lap. `--analysis-report` overwrites the Markdown report on each completed lap with clean-lap status, tyre wear, current fuel/brake-bias/ERS state, and setup candidates. The setup candidates are heuristics from trace shape, tyre wear, tyre temperature, and car status. They are meant for A/B testing, not as an automatic setup solver.
+`--corner-log`는 완료된 랩의 구간별 속도, 브레이크, 스로틀, 조향 요약을 CSV로 누적합니다. `--analysis-report`는 랩이 끝날 때마다 최신 Markdown 리포트를 덮어씁니다. 리포트에는 클린 랩 여부, 타이어 웨어, 현재 연료/브레이크 바이어스/ERS 상태, 세팅 후보가 들어갑니다.
 
-## Telemetry Compatibility Gaps
+세팅 추천은 자동 정답이 아니라 후보입니다. 예를 들어 코너 중반 조향량과 앞 타이어 웨어/온도가 높으면 앞 그립 후보를, 코너 탈출에서 스로틀과 조향 보정이 같이 커지면 뒤 트랙션 후보를 제안합니다. 같은 연료량, 같은 타이어 사용 랩 수에서 A/B 테스트로 확인해야 합니다.
 
-F1 25 UDP telemetry is a binary protocol. MOZA Dash Studio exposes named values such as `v1/gameData/Rpm` and `v1/gameData/TyreWearFL`. Those two worlds do not always line up directly.
+## 텔레메트리 호환 차이
 
-Full field-by-field comparison is in [docs/f1-25-moza-telemetry-matrix.md](docs/f1-25-moza-telemetry-matrix.md).
-The confirmed mapping subset for F1, LU/LMU, ACE, and ACR is in [docs/confirmed-telemetry-mappings.md](docs/confirmed-telemetry-mappings.md).
+F1 25 UDP는 바이너리 프로토콜입니다. MOZA Dash Studio는 `v1/gameData/Rpm`, `v1/gameData/TyreWearFL` 같은 이름 기반 값을 노출합니다. 두 형식이 항상 1:1로 맞지는 않습니다.
 
-Known gap categories:
+전체 필드 비교표는 [docs/f1-25-moza-telemetry-matrix.md](docs/f1-25-moza-telemetry-matrix.md)에 정리했습니다.
+F1, LU/LMU, ACE, ACR 중 확실히 매핑할 수 있는 하위 집합은 [docs/confirmed-telemetry-mappings.md](docs/confirmed-telemetry-mappings.md)에 분리했습니다.
 
-| Area | Why it matters | Current bridge behavior |
+알려진 차이 범주는 다음과 같습니다.
+
+| 영역 | 왜 문제가 되는가 | 현재 브리지 동작 |
 | --- | --- | --- |
-| Wheel arrays | F1 wheel arrays use `RL, RR, FL, FR`, while dashboard keys are usually named `FL, FR, RL, RR`. This affects tyre wear, tyre damage, tyre temperatures, tyre pressure, and brake temperatures. | Internal logging/HUD parsing maps F1 wheel arrays to named corners. Packet forwarding currently rewrites only tyre wear when `--fix-tyre-wear-order` is enabled. |
-| Units and derived values | F1 packets often expose raw values or game-specific units, for example ERS store energy, fuel in tank, fuel remaining laps, rev-light percent, and temperatures. MOZA keys may expose percent, laps, labels, or already-normalized values. | The local HUD/report derives values for display. Forwarded packets are not globally converted except for explicit remap features. |
-| Status and enum fields | DRS, ERS deploy mode, tyre compounds, pit status, lap invalid state, and result status are numeric game enums. Dashboards often expect booleans, labels, or colors. | Parsed for local HUD/analysis where implemented. MOZA dashboard behavior still depends on Pit House's existing keys. |
-| Lap and gap data | F1 has lap distance, lap number, invalid flags, car position, delta-to-front, and delta-to-leader fields. MOZA may not expose matching keys such as `BehindGap` or `FrontGap`. | Used by the local analysis report. The bridge cannot create new MOZA telemetry keys inside Pit House. |
-| Packet version drift | F1 24 and F1 25 packet layouts differ, even when packet ids look similar. | Analysis parsing is guarded to F1 25 format `2025`; unsupported formats can still pass through but are not parsed for local analysis. |
-| Non-F1 games | ACE, ACR, and LMU do not present the same F1 UDP packet shape. They need shared-memory/plugin adapters or an external UDP exporter. | Listed as profiles, but native adapters are pending. `generic-udp` only forwards packets from another exporter. |
+| 휠 배열 | F1 휠 배열은 `RL, RR, FL, FR` 순서이고, 대시보드 키는 보통 `FL, FR, RL, RR` 이름 기준입니다. 타이어 웨어뿐 아니라 타이어 데미지, 타이어 온도, 타이어 압력, 브레이크 온도에도 영향을 줄 수 있습니다. | 내부 로깅/HUD 파서는 F1 휠 배열을 이름 기준 코너로 매핑합니다. 패킷 전달에서 실제로 고치는 값은 현재 `--fix-tyre-wear-order`의 타이어 웨어뿐입니다. |
+| 단위와 파생값 | F1 패킷은 ERS 저장 에너지, 탱크 연료량, 남은 연료 랩 수, REV 라이트 퍼센트, 온도처럼 원본/게임별 값을 냅니다. MOZA 키는 퍼센트, 랩 수, 라벨, 정규화된 값일 수 있습니다. | 로컬 HUD/리포트에서는 표시용 값을 일부 파생합니다. 전달 패킷은 명시적인 재매핑 기능 외에는 전체 단위 변환을 하지 않습니다. |
+| 상태와 열거값 | DRS, ERS 배포 모드, 타이어 컴파운드, 피트 상태, 무효 랩, 결과 상태는 게임 열거값입니다. 대시보드는 불리언, 라벨, 색상을 기대하는 경우가 많습니다. | 구현된 범위에서는 로컬 HUD/분석용으로 파싱합니다. MOZA 대시 동작은 Pit House가 이미 제공하는 키에 의존합니다. |
+| 랩과 차간 데이터 | F1에는 랩 거리, 랩 번호, 무효 플래그, 차량 순위, 앞차와의 차이, 선두와의 차이가 있습니다. MOZA가 `BehindGap`, `FrontGap` 같은 대응 키를 제공하지 않을 수 있습니다. | 로컬 분석 리포트에서 사용합니다. 브리지가 Pit House 안에 새 MOZA 텔레메트리 키를 만들 수는 없습니다. |
+| 패킷 버전 차이 | F1 24와 F1 25는 패킷 ID가 비슷해도 구조가 다릅니다. | 분석 파싱은 F1 25 형식 `2025`일 때만 수행합니다. 미지원 형식은 그대로 전달될 수 있지만 로컬 분석에는 쓰지 않습니다. |
+| 비-F1 게임 | ACE, ACR, LMU는 F1 UDP와 같은 패킷 구조가 아닙니다. 공유 메모리/플러그인 어댑터 또는 외부 UDP 익스포터가 필요합니다. | 프로필은 등록되어 있지만 네이티브 어댑터는 아직 미구현입니다. `generic-udp`는 외부 익스포터가 만든 패킷만 그대로 전달합니다. |
 
-The currently implemented packet-level remap is tyre wear order. In F1 25, wheel arrays are ordered:
+현재 구현된 패킷 단위 재매핑은 타이어 웨어 순서 보정입니다. F1 25의 휠 배열은 다음 순서를 씁니다.
 
 ```text
 0 = RL
@@ -145,7 +147,7 @@ The currently implemented packet-level remap is tyre wear order. In F1 25, wheel
 3 = FR
 ```
 
-MOZA dashboard fields are named:
+반면 MOZA 대시보드 필드는 이름 기준으로 노출됩니다.
 
 ```text
 TyreWearFL
@@ -154,97 +156,90 @@ TyreWearRL
 TyreWearRR
 ```
 
-If MOZA Pit House already maps the F1 25 array correctly, do not enable the remap. If the displayed tyre wear values appear swapped, enable `--fix-tyre-wear-order` and verify with clearly asymmetric tyre wear.
+MOZA Pit House가 F1 25 배열을 이미 올바르게 매핑한다면 `--fix-tyre-wear-order`를 켜지 않는 것이 맞습니다. 실제 Mission R 대시에 타이어 웨어가 앞뒤/좌우로 바뀌어 보일 때만 이 옵션을 켜고 확인해야 합니다.
 
-## MOZA Dashboard Binding
+## MOZA Dash Studio 바인딩
 
-MOZA Dash Studio bindings use JavaScript expressions such as:
+MOZA Dash Studio는 JavaScript 표현식으로 텔레메트리를 읽습니다.
 
 ```js
 Telemetry.get("v1/gameData/Rpm").value
 ```
 
-Most dashboard telemetry values follow this shape:
+대부분의 대시보드 값은 다음 형태입니다.
 
 ```text
 v1/gameData/<TelemetryName>
 ```
 
-Useful examples for an F1-style dashboard:
+예시:
 
-| Display | Binding |
+| 표시 | 바인딩 |
 | --- | --- |
-| Gear | `Telemetry.get("v1/gameData/Gear").value` |
+| 기어 | `Telemetry.get("v1/gameData/Gear").value` |
 | RPM | `Telemetry.get("v1/gameData/Rpm").value` |
-| RPM percent | `Telemetry.get("v1/gameData/CarSettings_CurrentDisplayedRPMPercent").value` |
-| Speed | `Telemetry.get("v1/gameData/SpeedKmh").value` |
+| 속도 | `Telemetry.get("v1/gameData/SpeedKmh").value` |
 | DRS | `Telemetry.get("v1/gameData/Drs").value` |
-| DRS available | `Telemetry.get("v1/gameData/DRSAvailable").value` |
-| DRS allowed | `Telemetry.get("v1/gameData/DRSAllowed").value` |
-| ERS percent | `Telemetry.get("v1/gameData/ERSPercent").value` |
-| ERS stored | `Telemetry.get("v1/gameData/ERSStored").value` |
-| Fuel laps | `Telemetry.get("v1/gameData/FuelRemainLaps").value` |
-| Brake bias | `Telemetry.get("v1/gameData/BrakeBias").value` |
-| Front-left tyre wear | `Telemetry.get("v1/gameData/TyreWearFL").value` |
-| Front-right tyre wear | `Telemetry.get("v1/gameData/TyreWearFR").value` |
-| Rear-left tyre wear | `Telemetry.get("v1/gameData/TyreWearRL").value` |
-| Rear-right tyre wear | `Telemetry.get("v1/gameData/TyreWearRR").value` |
+| ERS | `Telemetry.get("v1/gameData/ERSPercent").value` |
+| 연료 잔여 랩 | `Telemetry.get("v1/gameData/FuelRemainLaps").value` |
+| 브레이크 바이어스 | `Telemetry.get("v1/gameData/BrakeBias").value` |
+| 좌측 앞 타이어 웨어 | `Telemetry.get("v1/gameData/TyreWearFL").value` |
 
-The bridge does not register new MOZA keys. For example, it cannot create `v1/gameData/BehindGap` unless Pit House already exposes that key. It can only change the F1 UDP packets that Pit House reads underneath existing keys.
+이 브리지는 새 MOZA 키를 등록하지 않습니다. 예를 들어 Pit House가 `v1/gameData/BehindGap`을 제공하지 않는다면, 브리지만으로 그 키를 새로 만들 수는 없습니다. 브리지는 Pit House가 읽는 기존 게임 패킷 값을 바꾸거나 전달할 수 있습니다.
 
-## Command Options
+## 옵션
 
-| Option | Default | Description |
+| 옵션 | 기본값 | 설명 |
 | --- | --- | --- |
-| `--game` | `auto` | Game profile: `auto`, `f1-25`, `generic-udp`, `ace`, `acr`, `lmu` |
-| `--listen` | Profile default | UDP port receiving game packets |
-| `--listen-host` | `127.0.0.1` | Host/interface to bind. Use `0.0.0.0` only when another PC must send telemetry over LAN |
-| `--moza-host` | `127.0.0.1` | MOZA Pit House host |
-| `--moza-port` | Profile default | MOZA Pit House target telemetry port |
-| `--mode` | `passthrough` | `passthrough` or `remap` |
-| `--fix-tyre-wear-order` | `false` | Rewrite F1 25 `m_tyresWear[4]` order |
-| `--input-log` | unset | CSV path for throttle/brake/steer/speed/gear/RPM/temperature samples |
-| `--corner-log` | unset | CSV path for completed-lap segment summaries |
-| `--analysis-report` | unset | Markdown path for the latest completed lap analysis |
-| `--hud-http` | unset | Starts a local HTTP HUD on the given port |
-| `--hud-host` | `127.0.0.1` | Host/interface for the local HTTP HUD |
-| `--dry-run` | `false` | Do not forward packets |
-| `--verbose` | `false` | Print runtime stats |
+| `--game` | `auto` | `auto`, `f1-25`, `generic-udp`, `ace`, `acr`, `lmu` |
+| `--listen` | 프로필 기본값 | 게임 UDP를 받는 포트 |
+| `--listen-host` | `127.0.0.1` | 수신 호스트/인터페이스. 다른 PC에서 LAN으로 보낼 때만 `0.0.0.0` 사용 |
+| `--moza-host` | `127.0.0.1` | MOZA Pit House 호스트 |
+| `--moza-port` | 프로필 기본값 | MOZA Pit House 대상 포트 |
+| `--mode` | `passthrough` | `passthrough` 또는 `remap` |
+| `--fix-tyre-wear-order` | `false` | F1 25 `m_tyresWear[4]` 순서 보정 |
+| `--input-log` | 없음 | throttle/brake/steer/speed/gear/RPM/온도 CSV 저장 경로 |
+| `--corner-log` | 없음 | 완료된 랩의 segment 요약 CSV 저장 경로 |
+| `--analysis-report` | 없음 | 최신 완료 랩 분석 Markdown 저장 경로 |
+| `--hud-http` | 없음 | 지정한 포트로 로컬 HTTP HUD 실행 |
+| `--hud-host` | `127.0.0.1` | 로컬 HTTP HUD host/interface |
+| `--dry-run` | `false` | 패킷을 MOZA로 전달하지 않음 |
+| `--verbose` | `false` | 런타임 통계 출력 |
 
-## Current Scope
+## 현재 범위
 
-Implemented:
+구현됨:
 
-- F1 25 packet header parsing
-- UDP packet-based `auto` detection for F1 25
-- UDP passthrough to MOZA Pit House
-- Experimental tyre wear order remap for `PacketCarDamageData`
-- F1 25 throttle/brake/steer/clutch/DRS/REV/speed/gear/RPM/temperature sample extraction from `PacketCarTelemetryData`
-- F1 25 player lap/session/car status/car damage parsing for analysis and confirmed MOZA key mapping
-- CSV input logging with `--input-log`
-- Completed-lap corner segment CSV logging with `--corner-log`
-- Clean lap detection and Markdown setup-candidate report with `--analysis-report`
-- Local browser HUD with `--hud-http`, REV LEDs, steering bar, and input trace
-- `--game` profile selection with guarded ACE/ACR/LMU placeholders
-- Packet-level tests for header parsing and tyre wear remap offsets
+- F1 25 패킷 헤더 파싱
+- F1 25 UDP 패킷 기반 `auto` 감지
+- MOZA Pit House로 UDP 그대로 전달
+- `PacketCarDamageData` 타이어 웨어 순서 보정
+- `PacketCarTelemetryData`에서 throttle/brake/steer/clutch/DRS/REV/speed/gear/RPM/온도 추출
+- 분석용 플레이어 랩/세션/차량 상태/차량 손상 파싱과 확정 MOZA 키 매핑
+- `--input-log` CSV 로깅
+- `--corner-log` 완료 랩 segment CSV 로깅
+- `--analysis-report` 클린 랩 판정과 세팅 후보 Markdown 리포트
+- REV LED, steering bar, input trace가 포함된 `--hud-http` 브라우저 HUD
+- ACE/ACR/LMU placeholder 프로필과 명확한 에러 메시지
+- Rust unit test
 
-Not implemented yet:
+아직 미구현:
 
-- Native ACE shared-memory adapter
-- Native ACR shared-memory/helper adapter
-- Native LMU shared-memory/plugin adapter
-- Behind gap injection into MOZA dashboards
-- F1 25 to F1 24 packet down-conversion
-- Full SimHub-compatible dashboard editor
-- Direct Mission R OLED rendering
-- Signed Windows installer/release pipeline
+- ACE 공유 메모리 어댑터
+- ACR 공유 메모리/보조 리더 어댑터
+- LMU 공유 메모리/플러그인 어댑터
+- MOZA 대시에 뒤차와의 차간 필드 주입
+- F1 25 -> F1 24 패킷 하위 버전 변환
+- SimHub 호환 대시보드 에디터
+- Mission R OLED 직접 렌더링
+- 서명된 Windows 설치 파일/릴리스 파이프라인
 
-## Safety Notes
+## 안전 메모
 
-The bridge never sends input back to F1 25. It only listens for UDP telemetry and forwards UDP telemetry to Pit House.
+이 브리지는 F1 25로 입력을 되돌려 보내지 않습니다. UDP 텔레메트리를 읽고, 필요 시 MOZA Pit House로 전달합니다.
 
-If Pit House telemetry stops, close F1 25, Pit House, and the bridge, then start them again in this order:
+텔레메트리가 멈추면 다음 순서로 다시 시작합니다.
 
 1. MOZA Pit House
 2. Sim MOZA Bridge
-3. The target game
+3. 대상 게임

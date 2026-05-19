@@ -1,79 +1,79 @@
-# ACE / ACR / LU Adapter Research
+# ACE / ACR / LU 어댑터 조사
 
-Date: 2026-05-19
+확인일: 2026-05-19
 
-This document uses:
+이 문서의 약어:
 
 - `ACE`: Assetto Corsa EVO
 - `ACR`: Assetto Corsa Rally
 - `LU` / `LMU`: Le Mans Ultimate
 
-## Summary
+## 요약
 
-ACE, ACR, and LU should not be treated like F1 25 UDP profiles. The correct shape is:
+ACE, ACR, LU는 F1 25 UDP 프로필처럼 취급하면 안 됩니다. 구현 구조는 다음이 맞습니다.
 
 ```text
-game process / shared memory / plugin
-  -> game-specific adapter
-  -> normalized telemetry model
-  -> local HUD/logging/analysis and MOZA output
+게임 프로세스 / 공유 메모리 / 플러그인
+  -> 게임별 어댑터
+  -> 정규화된 텔레메트리 모델
+  -> 로컬 HUD/로깅/분석과 MOZA 출력
 ```
 
-`generic-udp` is still useful only when another exporter already emits packets that the target app understands. It is not a substitute for native ACE, ACR, or LU parsing.
+`generic-udp`는 다른 익스포터가 대상 앱이 이해할 수 있는 패킷을 이미 만들어줄 때만 유효합니다. 네이티브 ACE, ACR, LU 파싱을 대체하지 않습니다.
 
-## Source Findings
+## 조사 결과
 
-| Game | Current public signal | Bridge implication |
+| 게임 | 현재 공개 신호 | 브리지 구현 의미 |
 | --- | --- | --- |
-| ACE | MOZA lists telemetry support. Assetto Corsa EVO 0.6 release notes mention an updated shared-memory library and official MoTeC support. Third-party dashboard docs describe basic early-access support with few exposed values. | Build a Windows shared-memory adapter with game-version/layout guards. Do not assume stable field coverage across Early Access updates. |
-| ACR | MOZA lists telemetry support and SimHub lists ACR as supported. Public overlay tooling added ACR support through an accompanying `ACRallyMemReader` helper. | Add a native/helper reader adapter. Do not assume F1-style UDP or full dashboard key coverage. |
-| LU / LMU | MOZA lists telemetry support and the MOZA Digital Dash key matrix has a `Le mans ultimate` column. LMU also has official native telemetry recording to DuckDB for offline analysis. Third-party dashboards may still configure a plugin-backed live path. | Implement a shared-memory/plugin-aware adapter. DuckDB recording is useful for analysis imports but is not a low-latency live HUD path. |
+| ACE | MOZA는 텔레메트리 지원으로 표시합니다. Assetto Corsa EVO 0.6 릴리스 노트는 공유 메모리 라이브러리 갱신과 공식 MoTeC 지원을 언급합니다. 일부 서드파티 대시보드 문서는 얼리 액세스 기본 값만 노출된다고 설명합니다. | 게임 버전/구조 보호가 있는 Windows 공유 메모리 어댑터가 필요합니다. 얼리 액세스 업데이트마다 필드 범위가 바뀔 수 있습니다. |
+| ACR | MOZA는 텔레메트리 지원으로 표시하고, SimHub도 ACR 지원을 표시합니다. 공개 오버레이 도구는 `ACRallyMemReader` 보조 리더를 통해 ACR 지원을 추가했습니다. | 네이티브/보조 리더 어댑터가 필요합니다. F1 방식 UDP나 전체 대시보드 키 범위를 가정하면 안 됩니다. |
+| LU / LMU | MOZA는 텔레메트리 지원으로 표시하고, MOZA Digital Dash 키 매트릭스에는 `Le mans ultimate` 컬럼이 있습니다. LMU에는 오프라인 분석용 DuckDB 텔레메트리 기록도 있습니다. 일부 서드파티 대시보드는 플러그인 기반 실시간 경로를 사용할 수 있습니다. | 공유 메모리/플러그인 인식 어댑터를 구현해야 합니다. DuckDB 기록은 분석 가져오기에는 유용하지만 지연 시간이 낮은 실시간 HUD 경로가 아닙니다. |
 
-## MOZA Key Coverage
+## MOZA 키 지원 범위
 
-MOZA's game compatibility list marks telemetry support for all three:
+MOZA 게임 호환 목록은 세 게임 모두 텔레메트리 지원으로 표시합니다.
 
-- Assetto Corsa EVO: telemetry supported
-- Assetto Corsa Rally: telemetry supported
-- Le Mans Ultimate: telemetry supported
+- Assetto Corsa EVO: 텔레메트리 지원
+- Assetto Corsa Rally: 텔레메트리 지원
+- Le Mans Ultimate: 텔레메트리 지원
 
-MOZA's Digital Dash Telemetry Support table is different. It is a key-by-key dashboard matrix. In the current table:
+MOZA Digital Dash Telemetry Support 표는 다른 의미입니다. 이 표는 키별 대시보드 매트릭스입니다. 현재 표 기준:
 
-| Column | Key count in table | Notes |
+| 컬럼 | 표의 지원 키 수 | 비고 |
 | --- | ---: | --- |
-| `Assetto Corsa Competizione` | 105 | Useful as an AC-family reference, but not proof of ACR coverage |
-| `Assetto Corsa` | 98 | Useful as an AC-family reference, but not proof of ACE/ACR coverage |
-| `Le mans ultimate` | 105 | Direct LU/LMU dashboard key coverage |
-| `Assetto Corsa EVO` | none | No dedicated digital-dash column yet |
-| `Assetto Corsa Rally` | none | No dedicated digital-dash column yet |
+| `Assetto Corsa Competizione` | 105 | AC 계열 참고용. ACR 범위 증거는 아님 |
+| `Assetto Corsa` | 98 | AC 계열 참고용. ACE/ACR 범위 증거는 아님 |
+| `Le mans ultimate` | 105 | LU/LMU 대시보드 키 범위의 직접 증거 |
+| `Assetto Corsa EVO` | 없음 | 전용 Digital Dash 컬럼 없음 |
+| `Assetto Corsa Rally` | 없음 | 전용 Digital Dash 컬럼 없음 |
 
-For LU, the supported key list includes the important dashboard groups: speed/RPM/gear/input, lap/gap/timing, fuel, tyre/brake temperatures, tyre wear, tyre pressures, pit/flag state, track/session metadata, car coordinates, RPM percent, wheel spin, track-position percent, location, player index, and opponent count.
+LU는 속도/RPM/기어/입력, 랩/차간/타이밍, 연료, 타이어/브레이크 온도, 타이어 웨어, 타이어 압력, 피트/플래그 상태, 트랙/세션 메타데이터, 차량 좌표, RPM 퍼센트, 휠 스핀, 트랙 위치 퍼센트, 위치, 플레이어 인덱스, 상대 차량 수 그룹이 확인됩니다.
 
-For ACE and ACR, MOZA's general telemetry support means Pit House can receive some telemetry, but the public digital-dash table does not yet say exactly which `v1/gameData/...` keys are populated for these two titles. The bridge should therefore keep unsupported or uncertain values in the local HUD/logging layer until a real Pit House capture confirms key behavior.
+ACE와 ACR은 MOZA 일반 텔레메트리 지원이 있으므로 Pit House가 일부 텔레메트리를 받을 수는 있습니다. 하지만 공개 Digital Dash 표는 두 게임에서 어떤 `v1/gameData/...` 키가 채워지는지 아직 보여주지 않습니다. 따라서 실제 Pit House 캡처로 확인하기 전까지는 불확실한 값을 로컬 HUD/로깅 계층에 보관해야 합니다.
 
-The confirmed subset that can be mapped today is maintained in [confirmed-telemetry-mappings.md](confirmed-telemetry-mappings.md).
+오늘 기준 확정 매핑 하위 집합은 [confirmed-telemetry-mappings.md](confirmed-telemetry-mappings.md)에 유지합니다.
 
-## Adapter Notes
+## 어댑터 메모
 
 ### ACE
 
-Known direction:
+확인된 방향:
 
-- Not a simple UDP stream.
-- Official update notes mention shared-memory and MoTeC output.
-- Early Access state means telemetry layout and field coverage can change.
-- Third-party docs report only basic data values for some dashboard integrations.
+- 단순 UDP 스트림이 아닙니다.
+- 공식 업데이트 노트는 공유 메모리와 MoTeC 출력을 언급합니다.
+- 얼리 액세스 상태라 텔레메트리 구조와 필드 범위가 바뀔 수 있습니다.
+- 일부 서드파티 대시보드 문서는 기본 데이터 값만 노출된다고 설명합니다.
 
-Implementation target:
+구현 대상:
 
 ```text
-ACE shared memory
-  -> ace adapter
-  -> normalized telemetry
-  -> HUD/logging/MOZA output
+ACE 공유 메모리
+  -> ACE 어댑터
+  -> 정규화된 텔레메트리
+  -> HUD/로깅/MOZA 출력
 ```
 
-Non-authoritative examples have used shared-memory names such as:
+비공식 예시에서 관찰된 공유 메모리 이름:
 
 ```text
 Local\acevo_pmf_physics
@@ -81,75 +81,75 @@ Local\acevo_pmf_graphics
 Local\acevo_pmf_static
 ```
 
-These names must be verified against the installed game version before hard-coding. A probe should check available mappings and struct sizes before parsing.
+이 이름은 하드코딩하기 전에 설치된 게임 버전에서 반드시 검증해야 합니다. 파서는 매핑 존재 여부와 구조체 크기를 먼저 확인해야 합니다.
 
 ### ACR
 
-Known direction:
+확인된 방향:
 
-- MOZA marks ACR telemetry as supported.
-- SimHub lists ACR as supported.
-- Public overlay tooling uses an `ACRallyMemReader` helper, which points toward a local memory/helper-reader path.
-- Public reports suggest early support may expose only a subset of values in some dashboard stacks.
+- MOZA는 ACR 텔레메트리를 지원으로 표시합니다.
+- SimHub는 ACR을 지원 게임으로 표시합니다.
+- 공개 오버레이 도구는 `ACRallyMemReader` 보조 리더를 사용합니다. 이는 로컬 메모리/보조 리더 경로를 가리킵니다.
+- 일부 대시보드 스택에서는 초기 지원 범위가 제한적일 수 있습니다.
 
-Implementation target:
+구현 대상:
 
 ```text
-ACR process/helper memory reader
-  -> acr adapter
-  -> normalized telemetry
-  -> HUD/logging/MOZA output
+ACR 프로세스/보조 메모리 리더
+  -> ACR 어댑터
+  -> 정규화된 텔레메트리
+  -> HUD/로깅/MOZA 출력
 ```
 
-The first ACR adapter should prioritize:
+첫 ACR 어댑터 우선순위:
 
-- speed
+- 속도
 - RPM
-- gear
-- throttle/brake/clutch/steering
-- tyre temperatures or traction-related values if exposed
-- lap/stage timing where available
-- stage position/distance if available
+- 기어
+- 스로틀/브레이크/클러치/조향
+- 노출된다면 타이어 온도 또는 트랙션 관련 값
+- 가능하다면 랩/스테이지 타이밍
+- 가능하다면 스테이지 위치/거리
 
 ### LU / LMU
 
-Known direction:
+확인된 방향:
 
-- MOZA marks LU telemetry as supported.
-- MOZA's digital-dash key matrix directly includes `Le mans ultimate`.
-- Official LMU telemetry recording exports DuckDB files for offline analysis.
-- Third-party live dashboards may use shared-memory/plugin-backed integration.
+- MOZA는 LU 텔레메트리를 지원으로 표시합니다.
+- MOZA Digital Dash 키 매트릭스에는 `Le mans ultimate` 컬럼이 직접 있습니다.
+- 공식 LMU 텔레메트리 기록은 오프라인 분석용 DuckDB 파일을 내보냅니다.
+- 서드파티 실시간 대시보드는 공유 메모리/플러그인 기반 연동을 사용할 수 있습니다.
 
-Implementation target:
+구현 대상:
 
 ```text
-LMU shared memory or plugin-backed live data
-  -> lmu adapter
-  -> normalized telemetry
-  -> HUD/logging/MOZA output
+LMU 공유 메모리 또는 플러그인 기반 실시간 데이터
+  -> LMU 어댑터
+  -> 정규화된 텔레메트리
+  -> HUD/로깅/MOZA 출력
 ```
 
-The first LU adapter should prioritize:
+첫 LU 어댑터 우선순위:
 
-- speed/RPM/gear/input
-- lap timing and gap
-- tyre wear, tyre temperatures, tyre pressures
-- brake temperatures and brake bias
-- fuel and fuel capacity
-- pit limiter/pitlane/flag state
-- track position percent and car coordinates
+- 속도/RPM/기어/입력
+- 랩 타이밍과 차간
+- 타이어 웨어, 타이어 온도, 타이어 압력
+- 브레이크 온도와 브레이크 바이어스
+- 연료와 연료 용량
+- 피트 리미터/피트레인/플래그 상태
+- 트랙 위치 퍼센트와 차량 좌표
 
-## Open Verification Tasks
+## 구현 전 검증 작업
 
-Before writing native adapters, verify on a Windows machine with the games installed:
+네이티브 어댑터 작성 전에 Windows PC에서 게임을 설치한 상태로 확인해야 합니다.
 
-1. Whether the game exposes named Windows file mappings, plugin files, or helper processes.
-2. Whether field layouts include explicit version/size markers.
-3. Whether Pit House exposes ACE/ACR values under existing `v1/gameData/...` keys.
-4. Whether LU key values in Pit House match the MOZA Digital Dash table.
-5. Whether rev lights and wheel LEDs are driven by RPM percent, rev-light flags, or hardware-specific MOZA integration.
+1. 게임이 이름 있는 Windows 파일 매핑, 플러그인 파일, 보조 프로세스 중 무엇을 노출하는지 확인
+2. 필드 구조에 버전/크기 마커가 있는지 확인
+3. Pit House가 ACE/ACR 값을 기존 `v1/gameData/...` 키로 노출하는지 확인
+4. LU 키 값이 MOZA Digital Dash 표와 일치하는지 확인
+5. REV 라이트와 휠 LED가 RPM 퍼센트, REV 라이트 플래그, 하드웨어별 MOZA 연동 중 무엇으로 구동되는지 확인
 
-## Sources
+## 출처
 
 - MOZA Game Compatibility List: https://support.mozaracing.com/en/support/solutions/articles/70000629729-game-support-list
 - MOZA Digital Dash Telemetry Support: https://support.mozaracing.com/en/support/solutions/articles/70000627978-digital-dash-telemetry-support

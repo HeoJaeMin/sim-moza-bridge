@@ -1,58 +1,58 @@
-# Driving Analysis
+# 주행 분석
 
-The bridge can produce local F1 25 driving analysis without changing the packet stream sent to MOZA Pit House.
+브리지는 MOZA Pit House로 보내는 패킷 흐름을 바꾸지 않고도 F1 25 주행 분석을 로컬에서 만들 수 있습니다.
 
-## Inputs
+## 입력
 
-The analyzer uses the player car from these F1 25 UDP packets:
+분석기는 F1 25 UDP 패킷에서 플레이어 차량 데이터를 사용합니다.
 
-| Packet | Use |
+| 패킷 | 사용 값 |
 | --- | --- |
-| `PacketCarTelemetryData` | throttle, brake, steer, speed, gear, RPM, DRS, REV, tyre temps |
-| `PacketLapData` | lap number, lap distance, current lap time, invalid lap flag, pit status, front/leader deltas |
-| `PacketSessionData` | track length for segment sizing |
-| `PacketCarStatusData` | fuel, brake bias, ERS, tyre compound and tyre age |
-| `PacketCarDamageData` | tyre wear and damage |
+| `PacketCarTelemetryData` | 스로틀, 브레이크, 조향, 속도, 기어, RPM, DRS, REV, 타이어 온도 |
+| `PacketLapData` | 랩 번호, 랩 거리, 현재 랩 타임, 무효 랩 플래그, 피트 상태, 앞차/선두와의 차이 |
+| `PacketSessionData` | 구간 크기 계산용 트랙 길이 |
+| `PacketCarStatusData` | 연료, 브레이크 바이어스, ERS, 타이어 컴파운드, 타이어 사용 랩 수 |
+| `PacketCarDamageData` | 타이어 웨어와 손상 |
 
-## Outputs
+## 출력
 
 ```bash
 cargo run -- --corner-log corners.csv --analysis-report analysis.md
 ```
 
-`corners.csv` appends one row per segment for each completed lap:
+`corners.csv`는 완료된 랩마다 구간별 행을 누적합니다.
 
-- clean lap flag
-- segment distance range
-- sample count
-- min/avg/max speed
-- max brake
-- max throttle
-- average and max absolute steering
-- coarse phase label: `entry`, `mid`, `exit`, or `straight`
+- 클린 랩 플래그
+- 구간 거리 범위
+- 샘플 수
+- 최소/평균/최대 속도
+- 최대 브레이크
+- 최대 스로틀
+- 평균/최대 절대 조향값
+- 거친 구간 라벨: `entry`, `mid`, `exit`, `straight`
 
-`analysis.md` is overwritten on every completed lap and is designed to be opened while testing setup changes.
+`analysis.md`는 완료 랩마다 덮어쓰며, 세팅 변경 테스트 중 바로 열어보기 위한 문서입니다.
 
-## Clean Lap Detection
+## 클린 랩 판정
 
-A completed lap is marked clean when:
+완료 랩은 다음 조건을 만족하면 클린으로 표시됩니다.
 
-- F1 25 did not flag the lap as invalid
-- pit status was not active during the lap
-- enough input samples were captured
+- F1 25가 무효 랩으로 표시하지 않음
+- 랩 중 피트 상태가 활성화되지 않음
+- 충분한 입력 샘플이 수집됨
 
-Invalid laps are still reported, but setup recommendations should be ignored for them.
+무효 랩도 리포트에는 남기지만, 그 랩의 세팅 추천은 무시해야 합니다.
 
-## Setup Candidates
+## 세팅 후보
 
-The setup section is heuristic. It looks for repeatable signals:
+세팅 섹션은 휴리스틱입니다. 반복적으로 나타나는 신호를 찾습니다.
 
-| Signal | Candidate |
+| 신호 | 후보 |
 | --- | --- |
-| high mid-corner steering demand with low throttle | more front grip: front wing +1, softer front ARB, or slightly lower front tyre pressure |
-| high exit throttle with steering correction | rear traction: on-throttle diff down, rear wing +1, or slightly lower rear tyre pressure |
-| high brake and steering overlap on entry | review brake bias and off-throttle differential |
-| front tyre wear/temp higher than rear | front-limited balance candidate |
-| rear tyre wear/temp higher than front | rear-limited traction or stability candidate |
+| 스로틀이 낮은 코너 중반에서 필요한 조향량이 큼 | 앞 그립 후보: 앞 윙 +1, 앞 안티롤바를 더 부드럽게, 또는 앞 타이어 압력 소폭 하향 |
+| 코너 탈출에서 스로틀이 높고 조향 보정이 큼 | 뒤 트랙션 후보: 온스로틀 디퍼렌셜 하향, 뒤 윙 +1, 또는 뒤 타이어 압력 소폭 하향 |
+| 코너 진입에서 브레이크와 조향이 많이 겹침 | 브레이크 바이어스와 오프스로틀 디퍼렌셜 점검 |
+| 앞 타이어 웨어/온도가 뒤보다 높음 | 앞 타이어 한계 밸런스 후보 |
+| 뒤 타이어 웨어/온도가 앞보다 높음 | 뒤 트랙션 또는 안정성 한계 후보 |
 
-Use the report as an A/B checklist. Change one setup item at a time, then compare clean laps with similar fuel load, tyre age, ERS mode, and traffic.
+리포트는 A/B 체크리스트로 사용합니다. 한 번에 세팅 항목 하나만 바꾸고, 연료량, 타이어 사용 랩 수, ERS 모드, 트래픽 조건이 비슷한 클린 랩끼리 비교해야 합니다.
