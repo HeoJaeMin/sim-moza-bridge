@@ -1,12 +1,17 @@
 use std::collections::BTreeMap;
 
 use crate::detect::detect_game_profile_from_packet;
-use crate::f1::car_damage::rewrite_all_tyre_wear_to_moza_named_order;
+use crate::f1::car_damage::{
+    parse_player_damage_sample, rewrite_all_tyre_wear_to_moza_named_order,
+};
+use crate::f1::car_status::parse_player_status_sample;
 use crate::f1::car_telemetry::parse_player_input_sample;
 use crate::f1::constants::{F1_25_PACKET_FORMAT, packet_id, packet_name};
 use crate::f1::header::{PacketHeader, parse_packet_header};
+use crate::f1::lap_data::parse_player_lap_sample;
+use crate::f1::session::parse_session_sample;
 use crate::games::{GameProfile, ProtocolKind};
-use crate::telemetry::InputSample;
+use crate::telemetry::{InputSample, TelemetryUpdate};
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum BridgeMode {
@@ -30,6 +35,7 @@ pub struct ProcessedPacket {
     pub patched: bool,
     pub detected_game: Option<GameProfile>,
     pub input_sample: Option<InputSample>,
+    pub telemetry_update: TelemetryUpdate,
 }
 
 pub struct TelemetryBridge {
@@ -65,15 +71,13 @@ impl TelemetryBridge {
                 patched: false,
                 detected_game,
                 input_sample: None,
+                telemetry_update: TelemetryUpdate::default(),
             });
         }
 
         let header = self.parse_known_protocol_header(packet, protocol)?;
-        let input_sample = if header.packet_id == packet_id::CAR_TELEMETRY {
-            parse_player_input_sample(packet).ok()
-        } else {
-            None
-        };
+        let telemetry_update = parse_telemetry_update(packet, header.packet_id);
+        let input_sample = telemetry_update.input.clone();
 
         if self.mode == BridgeMode::Passthrough {
             return Some(ProcessedPacket {
@@ -81,6 +85,7 @@ impl TelemetryBridge {
                 patched: false,
                 detected_game,
                 input_sample,
+                telemetry_update,
             });
         }
 
@@ -91,6 +96,7 @@ impl TelemetryBridge {
                 patched: false,
                 detected_game,
                 input_sample,
+                telemetry_update,
             });
         }
 
@@ -103,6 +109,7 @@ impl TelemetryBridge {
                     patched: true,
                     detected_game,
                     input_sample,
+                    telemetry_update,
                 });
             }
 
@@ -114,6 +121,7 @@ impl TelemetryBridge {
             patched: false,
             detected_game,
             input_sample,
+            telemetry_update,
         })
     }
 
@@ -171,6 +179,21 @@ impl TelemetryBridge {
     pub fn configured_game(&self) -> GameProfile {
         self.game
     }
+}
+
+fn parse_telemetry_update(packet: &[u8], packet_id: u8) -> TelemetryUpdate {
+    let mut update = TelemetryUpdate::default();
+
+    match packet_id {
+        packet_id::SESSION => update.session = parse_session_sample(packet).ok(),
+        packet_id::LAP_DATA => update.lap = parse_player_lap_sample(packet).ok(),
+        packet_id::CAR_TELEMETRY => update.input = parse_player_input_sample(packet).ok(),
+        packet_id::CAR_STATUS => update.status = parse_player_status_sample(packet).ok(),
+        packet_id::CAR_DAMAGE => update.damage = parse_player_damage_sample(packet).ok(),
+        _ => {}
+    }
+
+    update
 }
 
 #[cfg(test)]

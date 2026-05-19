@@ -1,3 +1,4 @@
+mod analysis;
 mod bridge;
 mod config;
 mod detect;

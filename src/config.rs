@@ -13,6 +13,8 @@ pub struct BridgeConfig {
     pub mode: BridgeMode,
     pub fix_tyre_wear_order: bool,
     pub input_log: Option<String>,
+    pub corner_log: Option<String>,
+    pub analysis_report: Option<String>,
     pub hud_host: String,
     pub hud_http_port: Option<u16>,
     pub dry_run: bool,
@@ -29,6 +31,8 @@ struct RawArgs {
     mode: String,
     fix_tyre_wear_order: bool,
     input_log: Option<String>,
+    corner_log: Option<String>,
+    analysis_report: Option<String>,
     hud_host: String,
     hud_http_port: Option<String>,
     dry_run: bool,
@@ -46,6 +50,8 @@ impl Default for RawArgs {
             mode: "passthrough".to_owned(),
             fix_tyre_wear_order: false,
             input_log: None,
+            corner_log: None,
+            analysis_report: None,
             hud_host: "127.0.0.1".to_owned(),
             hud_http_port: None,
             dry_run: false,
@@ -90,6 +96,8 @@ where
         mode: parse_mode(&raw.mode)?,
         fix_tyre_wear_order: raw.fix_tyre_wear_order,
         input_log: raw.input_log,
+        corner_log: raw.corner_log,
+        analysis_report: raw.analysis_report,
         hud_host: raw.hud_host,
         hud_http_port: parse_optional_present_port(raw.hud_http_port.as_deref(), "--hud-http")?,
         dry_run: raw.dry_run,
@@ -114,6 +122,10 @@ where
             "--mode" => raw.mode = next_value(&mut iter, "--mode")?,
             "--fix-tyre-wear-order" => raw.fix_tyre_wear_order = true,
             "--input-log" => raw.input_log = Some(next_value(&mut iter, "--input-log")?),
+            "--corner-log" => raw.corner_log = Some(next_value(&mut iter, "--corner-log")?),
+            "--analysis-report" => {
+                raw.analysis_report = Some(next_value(&mut iter, "--analysis-report")?)
+            }
             "--hud-host" => raw.hud_host = next_value(&mut iter, "--hud-host")?,
             "--hud-http" => raw.hud_http_port = Some(next_value(&mut iter, "--hud-http")?),
             "--dry-run" => raw.dry_run = true,
@@ -180,6 +192,8 @@ fn help_text() -> String {
         "  --mode <passthrough|remap>",
         "  --fix-tyre-wear-order",
         "  --input-log <csv-path>",
+        "  --corner-log <csv-path>",
+        "  --analysis-report <md-path>",
         "  --hud-http <port>",
         "  --hud-host <host>",
         "  --dry-run",
@@ -220,6 +234,10 @@ mod tests {
             "--fix-tyre-wear-order",
             "--input-log",
             "inputs.csv",
+            "--corner-log",
+            "corners.csv",
+            "--analysis-report",
+            "analysis.md",
             "--hud-http",
             "8080",
             "--dry-run",
@@ -232,6 +250,8 @@ mod tests {
         assert_eq!(config.mode, BridgeMode::Remap);
         assert!(config.fix_tyre_wear_order);
         assert_eq!(config.input_log.as_deref(), Some("inputs.csv"));
+        assert_eq!(config.corner_log.as_deref(), Some("corners.csv"));
+        assert_eq!(config.analysis_report.as_deref(), Some("analysis.md"));
         assert_eq!(config.hud_http_port, Some(8080));
         assert!(config.dry_run);
         assert!(config.verbose);

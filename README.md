@@ -74,13 +74,13 @@ Generic UDP passthrough can forward packets from any external exporter to any ta
 cargo run -- --game generic-udp --listen 20777 --moza-port 22025 --mode passthrough
 ```
 
-Input logging writes F1 25 throttle/brake samples to CSV:
+Input logging writes F1 25 throttle/brake/steering samples to CSV:
 
 ```bash
 cargo run -- --mode remap --fix-tyre-wear-order --input-log inputs.csv
 ```
 
-The lightweight HUD exposes a browser page with throttle/brake bars and basic car values:
+The lightweight HUD exposes a browser page with throttle/brake/steering bars, REV LEDs, DRS state, and a rolling input trace:
 
 ```bash
 cargo run -- --hud-http 8765 --input-log inputs.csv
@@ -93,6 +93,19 @@ http://127.0.0.1:8765
 ```
 
 The HUD polls at roughly 60Hz. Higher game UDP rates can be useful for logging, but the default browser HUD is tuned for human-visible smoothness rather than high-frequency analysis.
+
+Lap analysis writes 20 distance-based segment summaries and a latest-lap Markdown report:
+
+```bash
+cargo run -- \
+  --mode remap \
+  --fix-tyre-wear-order \
+  --input-log inputs.csv \
+  --corner-log corners.csv \
+  --analysis-report analysis.md
+```
+
+`--corner-log` appends a CSV row for each segment of every completed lap. `--analysis-report` overwrites the Markdown report on each completed lap with clean-lap status, tyre wear, current fuel/brake-bias/ERS state, and setup candidates. The setup candidates are heuristics from trace shape, tyre wear, tyre temperature, and car status. They are meant for A/B testing, not as an automatic setup solver.
 
 ## Why This Exists
 
@@ -163,7 +176,9 @@ The bridge does not register new MOZA keys. For example, it cannot create `v1/ga
 | `--moza-port` | Profile default | MOZA Pit House target telemetry port |
 | `--mode` | `passthrough` | `passthrough` or `remap` |
 | `--fix-tyre-wear-order` | `false` | Rewrite F1 25 `m_tyresWear[4]` order |
-| `--input-log` | unset | CSV path for throttle/brake/speed/gear/RPM samples |
+| `--input-log` | unset | CSV path for throttle/brake/steer/speed/gear/RPM/temperature samples |
+| `--corner-log` | unset | CSV path for completed-lap segment summaries |
+| `--analysis-report` | unset | Markdown path for the latest completed lap analysis |
 | `--hud-http` | unset | Starts a local HTTP HUD on the given port |
 | `--hud-host` | `127.0.0.1` | Host/interface for the local HTTP HUD |
 | `--dry-run` | `false` | Do not forward packets |
@@ -177,9 +192,12 @@ Implemented:
 - UDP packet-based `auto` detection for F1 25
 - UDP passthrough to MOZA Pit House
 - Experimental tyre wear order remap for `PacketCarDamageData`
-- F1 25 throttle/brake/speed/gear/RPM sample extraction from `PacketCarTelemetryData`
+- F1 25 throttle/brake/steer/clutch/DRS/REV/speed/gear/RPM/temperature sample extraction from `PacketCarTelemetryData`
+- F1 25 player lap/session/car status/car damage parsing for analysis
 - CSV input logging with `--input-log`
-- Local browser HUD with `--hud-http`
+- Completed-lap corner segment CSV logging with `--corner-log`
+- Clean lap detection and Markdown setup-candidate report with `--analysis-report`
+- Local browser HUD with `--hud-http`, REV LEDs, steering bar, and input trace
 - `--game` profile selection with guarded ACE/LMU placeholders
 - Packet-level tests for header parsing and tyre wear remap offsets
 

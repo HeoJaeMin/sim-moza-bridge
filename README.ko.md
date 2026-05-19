@@ -70,9 +70,9 @@ cargo run -- --mode remap --fix-tyre-wear-order --dry-run
 cargo run -- --game generic-udp --listen 20777 --moza-port 22025 --mode passthrough
 ```
 
-## 입력 로깅과 HUD
+## 입력 로깅, HUD, 분석
 
-F1 25의 `PacketCarTelemetryData`에서 throttle, brake, speed, gear, RPM을 추출합니다.
+F1 25의 `PacketCarTelemetryData`에서 throttle, brake, steer, clutch, DRS, REV, speed, gear, RPM, 온도 값을 추출합니다.
 
 CSV 로깅:
 
@@ -80,7 +80,7 @@ CSV 로깅:
 cargo run -- --mode remap --fix-tyre-wear-order --input-log inputs.csv
 ```
 
-브라우저 HUD:
+브라우저 HUD는 throttle/brake/steer 바, REV LED, DRS 상태, 입력 trace를 표시합니다.
 
 ```bash
 cargo run -- --hud-http 8765 --input-log inputs.csv
@@ -93,6 +93,21 @@ http://127.0.0.1:8765
 ```
 
 HUD는 약 60Hz 기준으로 화면을 갱신합니다. 사람이 보는 throttle/brake 바는 60Hz면 충분하고, 120Hz 이상은 화면 표시보다 고주파 로깅이나 분석 쪽에 더 의미가 있습니다.
+
+랩 분석은 완료된 랩을 20개 거리 segment로 나눠 CSV와 Markdown 리포트를 만듭니다.
+
+```bash
+cargo run -- \
+  --mode remap \
+  --fix-tyre-wear-order \
+  --input-log inputs.csv \
+  --corner-log corners.csv \
+  --analysis-report analysis.md
+```
+
+`--corner-log`는 완료된 랩의 segment별 속도, 브레이크, 스로틀, 조향 요약을 CSV로 누적합니다. `--analysis-report`는 랩이 끝날 때마다 최신 Markdown 리포트를 덮어씁니다. 리포트에는 clean lap 여부, 타이어 웨어, 현재 연료/브레이크 바이어스/ERS 상태, 세팅 후보가 들어갑니다.
+
+세팅 추천은 자동 정답이 아니라 후보입니다. 예를 들어 mid-corner 조향량과 앞 타이어 웨어/온도가 높으면 front grip 후보를, corner exit에서 스로틀과 조향 보정이 같이 커지면 rear traction 후보를 제안합니다. 같은 연료량, 같은 타이어 age에서 A/B 테스트로 확인해야 합니다.
 
 ## 왜 필요한가
 
@@ -156,7 +171,9 @@ v1/gameData/<TelemetryName>
 | `--moza-port` | 프로필 기본값 | MOZA Pit House 대상 포트 |
 | `--mode` | `passthrough` | `passthrough` 또는 `remap` |
 | `--fix-tyre-wear-order` | `false` | F1 25 `m_tyresWear[4]` 순서 보정 |
-| `--input-log` | 없음 | throttle/brake/speed/gear/RPM CSV 저장 경로 |
+| `--input-log` | 없음 | throttle/brake/steer/speed/gear/RPM/온도 CSV 저장 경로 |
+| `--corner-log` | 없음 | 완료된 랩의 segment 요약 CSV 저장 경로 |
+| `--analysis-report` | 없음 | 최신 완료 랩 분석 Markdown 저장 경로 |
 | `--hud-http` | 없음 | 지정한 포트로 로컬 HTTP HUD 실행 |
 | `--hud-host` | `127.0.0.1` | 로컬 HTTP HUD host/interface |
 | `--dry-run` | `false` | 패킷을 MOZA로 전달하지 않음 |
@@ -170,9 +187,12 @@ v1/gameData/<TelemetryName>
 - F1 25 UDP packet 기반 `auto` 감지
 - MOZA Pit House로 UDP passthrough
 - `PacketCarDamageData` 타이어 웨어 순서 보정
-- `PacketCarTelemetryData`에서 throttle/brake/speed/gear/RPM 추출
+- `PacketCarTelemetryData`에서 throttle/brake/steer/clutch/DRS/REV/speed/gear/RPM/온도 추출
+- 분석용 player lap/session/car status/car damage parsing
 - `--input-log` CSV 로깅
-- `--hud-http` 브라우저 HUD
+- `--corner-log` 완료 랩 segment CSV 로깅
+- `--analysis-report` clean lap 판정과 세팅 후보 Markdown 리포트
+- REV LED, steering bar, input trace가 포함된 `--hud-http` 브라우저 HUD
 - ACE/LMU placeholder 프로필과 명확한 에러 메시지
 - Rust unit test
 

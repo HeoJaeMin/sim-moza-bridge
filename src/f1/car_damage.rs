@@ -1,4 +1,6 @@
 use super::constants::{MAX_CARS, PACKET_HEADER_SIZE};
+use super::header::parse_packet_header;
+use crate::telemetry::{DamageSample, WheelValuesF32, WheelValuesU8};
 
 pub const CAR_DAMAGE_DATA_SIZE: usize = 46;
 pub const CAR_DAMAGE_PACKET_SIZE: usize = PACKET_HEADER_SIZE + MAX_CARS * CAR_DAMAGE_DATA_SIZE;
@@ -32,6 +34,15 @@ fn read_f32_le(packet: &[u8], offset: usize) -> f32 {
     )
 }
 
+fn read_u8_wheels(packet: &[u8], offset: usize) -> WheelValuesU8 {
+    WheelValuesU8 {
+        rl: packet[offset],
+        rr: packet[offset + 1],
+        fl: packet[offset + 2],
+        fr: packet[offset + 3],
+    }
+}
+
 fn write_f32_le(packet: &mut [u8], offset: usize, value: f32) {
     packet[offset..offset + 4].copy_from_slice(&value.to_le_bytes());
 }
@@ -48,6 +59,34 @@ pub fn read_f1_tyre_wear(packet: &[u8], car_index: usize) -> Result<TyreWearByCo
         rr: read_f32_le(packet, base + 4),
         fl: read_f32_le(packet, base + 8),
         fr: read_f32_le(packet, base + 12),
+    })
+}
+
+pub fn parse_player_damage_sample(packet: &[u8]) -> Result<DamageSample, String> {
+    let header = parse_packet_header(packet)
+        .ok_or_else(|| "packet is too short for F1 header".to_owned())?;
+    let car_index = header.player_car_index as usize;
+    let base = car_damage_offset(car_index)?;
+
+    if packet.len() < base + CAR_DAMAGE_DATA_SIZE || !is_car_damage_packet_size(packet) {
+        return Err("packet is too short for F1 car damage data".to_owned());
+    }
+
+    Ok(DamageSample {
+        session_time: header.session_time,
+        frame_identifier: header.frame_identifier,
+        player_car_index: header.player_car_index,
+        tyre_wear: WheelValuesF32 {
+            rl: read_f32_le(packet, base),
+            rr: read_f32_le(packet, base + 4),
+            fl: read_f32_le(packet, base + 8),
+            fr: read_f32_le(packet, base + 12),
+        },
+        tyre_damage: read_u8_wheels(packet, base + 16),
+        tyre_blisters: read_u8_wheels(packet, base + 24),
+        front_left_wing_damage: packet[base + 28],
+        front_right_wing_damage: packet[base + 29],
+        rear_wing_damage: packet[base + 30],
     })
 }
 
@@ -124,6 +163,35 @@ mod tests {
                 fr: 44.0,
             }
         );
+    }
+
+    #[test]
+    fn parses_player_damage_sample() {
+        let mut packet = make_car_damage_packet();
+        packet[0..2].copy_from_slice(&crate::f1::constants::F1_25_PACKET_FORMAT.to_le_bytes());
+        packet[2] = 25;
+        packet[6] = crate::f1::constants::packet_id::CAR_DAMAGE;
+        packet[15..19].copy_from_slice(&8.0_f32.to_le_bytes());
+        packet[19..23].copy_from_slice(&90_u32.to_le_bytes());
+        packet[27] = 2;
+
+        write_wear(&mut packet, 2, [10.0, 20.0, 30.0, 40.0]);
+        let base = car_damage_offset(2).unwrap();
+        packet[base + 16..base + 20].copy_from_slice(&[1, 2, 3, 4]);
+        packet[base + 24..base + 28].copy_from_slice(&[5, 6, 7, 8]);
+        packet[base + 28] = 9;
+        packet[base + 29] = 10;
+        packet[base + 30] = 11;
+
+        let sample = parse_player_damage_sample(&packet).unwrap();
+
+        assert_eq!(sample.player_car_index, 2);
+        assert_eq!(sample.tyre_wear.rl, 10.0);
+        assert_eq!(sample.tyre_wear.fr, 40.0);
+        assert_eq!(sample.tyre_damage.fl, 3);
+        assert_eq!(sample.tyre_blisters.rr, 6);
+        assert_eq!(sample.front_left_wing_damage, 9);
+        assert_eq!(sample.rear_wing_damage, 11);
     }
 
     #[test]
