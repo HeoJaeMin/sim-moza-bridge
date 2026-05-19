@@ -2,8 +2,11 @@ use std::io::{Read, Write};
 use std::net::{TcpListener, TcpStream};
 use std::sync::{Arc, Mutex};
 use std::thread;
+use std::time::Duration;
 
 use crate::telemetry::InputSample;
+
+const HUD_READ_TIMEOUT: Duration = Duration::from_secs(2);
 
 #[derive(Clone)]
 pub struct HudHandle {
@@ -25,11 +28,18 @@ pub fn start_hud_server(host: &str, port: u16) -> Result<HudHandle, String> {
     let thread_state = Arc::clone(&state);
 
     thread::spawn(move || {
-        for stream in listener.incoming().flatten() {
-            let state = Arc::clone(&thread_state);
-            thread::spawn(move || {
-                let _ = handle_connection(stream, state);
-            });
+        for stream in listener.incoming() {
+            match stream {
+                Ok(stream) => {
+                    let state = Arc::clone(&thread_state);
+                    thread::spawn(move || {
+                        if let Err(error) = handle_connection(stream, state) {
+                            eprintln!("[hud-error] {error}");
+                        }
+                    });
+                }
+                Err(error) => eprintln!("[hud-error] accept failed: {error}"),
+            }
         }
     });
 
@@ -40,6 +50,9 @@ fn handle_connection(
     mut stream: TcpStream,
     state: Arc<Mutex<Option<InputSample>>>,
 ) -> Result<(), String> {
+    stream
+        .set_read_timeout(Some(HUD_READ_TIMEOUT))
+        .map_err(|error| format!("HUD timeout setup failed: {error}"))?;
     let mut buffer = [0_u8; 1024];
     let size = stream
         .read(&mut buffer)

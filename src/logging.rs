@@ -42,6 +42,9 @@ impl InputLogger {
         self.writer
             .write_all(sample.to_csv_row().as_bytes())
             .map_err(|error| format!("failed to write input log row: {error}"))?;
+        self.writer
+            .flush()
+            .map_err(|error| format!("failed to flush input log row: {error}"))?;
         Ok(())
     }
 }

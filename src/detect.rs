@@ -6,7 +6,6 @@ pub fn detect_game_profile_from_packet(packet: &[u8]) -> Option<GameProfile> {
     let header = parse_packet_header(packet)?;
     let is_known_f1_packet = header.packet_format == F1_25_PACKET_FORMAT
         && header.game_year == 25
-        && header.packet_id >= packet_id::MOTION
         && header.packet_id <= packet_id::LAP_POSITIONS;
 
     if is_known_f1_packet {

@@ -151,7 +151,12 @@ impl CompletedLapAnalysis {
         let _ = writeln!(out);
         let _ = writeln!(out, "## Setup Candidates");
         let _ = writeln!(out);
-        if self.recommendations.is_empty() {
+        if !self.clean {
+            let _ = writeln!(
+                out,
+                "Not evaluated because this lap was not clean. Record a clean lap before applying setup changes."
+            );
+        } else if self.recommendations.is_empty() {
             let _ = writeln!(
                 out,
                 "No strong setup candidate yet. Record more clean laps on the same fuel and tyre stint."
@@ -216,7 +221,7 @@ impl TelemetryAnalyzer {
         let completed = self
             .latest_lap
             .as_ref()
-            .filter(|previous| is_new_lap(previous, &lap))
+            .filter(|previous| is_new_lap(previous, &lap, self.track_length_m()))
             .map(|previous| {
                 let lap_time_ms = if lap.last_lap_time_ms > 0 {
                     lap.last_lap_time_ms
@@ -274,12 +279,16 @@ impl TelemetryAnalyzer {
             ))
         };
         let corners = summarize_corners(&self.current_points, track_length_m);
-        let recommendations = recommend_setup(
-            &corners,
-            &self.latest_damage,
-            &self.latest_status,
-            &self.latest_input,
-        );
+        let recommendations = if clean {
+            recommend_setup(
+                &corners,
+                &self.latest_damage,
+                &self.latest_status,
+                &self.latest_input,
+            )
+        } else {
+            Vec::new()
+        };
 
         CompletedLapAnalysis {
             lap_num,
@@ -311,10 +320,18 @@ impl TelemetryAnalyzer {
     }
 }
 
-fn is_new_lap(previous: &LapSample, current: &LapSample) -> bool {
-    current.current_lap_num > previous.current_lap_num
-        || (current.current_lap_num == previous.current_lap_num
-            && previous.lap_distance_m - current.lap_distance_m > 500.0)
+fn is_new_lap(previous: &LapSample, current: &LapSample, track_length_m: f32) -> bool {
+    if current.current_lap_num > previous.current_lap_num {
+        return true;
+    }
+
+    if current.current_lap_num != previous.current_lap_num || track_length_m < 1_000.0 {
+        return false;
+    }
+
+    let wrap_window_m = (track_length_m * 0.08).clamp(150.0, 500.0);
+    previous.lap_distance_m > track_length_m - wrap_window_m
+        && current.lap_distance_m < wrap_window_m
 }
 
 fn summarize_corners(points: &[TracePoint], track_length_m: f32) -> Vec<CornerSummary> {
@@ -529,7 +546,28 @@ impl SegmentAccumulator {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::telemetry::WheelValuesF32;
+    use crate::telemetry::{TelemetryUpdate, WheelValuesF32};
+
+    fn lap_sample(lap_num: u8, lap_distance_m: f32, invalid: bool) -> LapSample {
+        LapSample {
+            session_time: 0.0,
+            frame_identifier: 0,
+            player_car_index: 0,
+            last_lap_time_ms: 90_000,
+            current_lap_time_ms: 10_000,
+            lap_distance_m,
+            total_distance_m: lap_distance_m,
+            car_position: 1,
+            current_lap_num: lap_num,
+            pit_status: 0,
+            sector: 1,
+            current_lap_invalid: invalid,
+            driver_status: 4,
+            result_status: 2,
+            delta_to_car_in_front_ms: None,
+            delta_to_race_leader_ms: None,
+        }
+    }
 
     #[test]
     fn summarizes_trace_into_segments() {
@@ -595,5 +633,107 @@ mod tests {
                 .iter()
                 .any(|rec| rec.area == "Mid-corner front grip")
         );
+    }
+
+    #[test]
+    fn does_not_complete_lap_on_mid_lap_distance_drop() {
+        let mut analyzer = TelemetryAnalyzer::default();
+        analyzer.ingest(&TelemetryUpdate {
+            session: Some(SessionSample {
+                session_time: 0.0,
+                frame_identifier: 0,
+                total_laps: 10,
+                track_length_m: 5_000,
+                session_type: 10,
+                track_id: 1,
+            }),
+            ..TelemetryUpdate::default()
+        });
+
+        analyzer.ingest(&TelemetryUpdate {
+            lap: Some(lap_sample(3, 1_200.0, false)),
+            ..TelemetryUpdate::default()
+        });
+        let completed = analyzer.ingest(&TelemetryUpdate {
+            lap: Some(lap_sample(3, 300.0, false)),
+            ..TelemetryUpdate::default()
+        });
+
+        assert!(completed.is_none());
+    }
+
+    #[test]
+    fn allows_same_lap_wrap_only_near_start_finish() {
+        let mut analyzer = TelemetryAnalyzer::default();
+        analyzer.ingest(&TelemetryUpdate {
+            session: Some(SessionSample {
+                session_time: 0.0,
+                frame_identifier: 0,
+                total_laps: 10,
+                track_length_m: 5_000,
+                session_type: 10,
+                track_id: 1,
+            }),
+            ..TelemetryUpdate::default()
+        });
+
+        analyzer.ingest(&TelemetryUpdate {
+            lap: Some(lap_sample(3, 4_900.0, false)),
+            ..TelemetryUpdate::default()
+        });
+        let completed = analyzer.ingest(&TelemetryUpdate {
+            lap: Some(lap_sample(3, 120.0, false)),
+            ..TelemetryUpdate::default()
+        });
+
+        assert!(completed.is_some());
+    }
+
+    #[test]
+    fn does_not_recommend_setup_for_invalid_laps() {
+        let mut analyzer = TelemetryAnalyzer::default();
+        analyzer.current_points = vec![
+            TracePoint {
+                lap_distance_m: 100.0,
+                speed_kmh: 100,
+                throttle: 0.1,
+                brake: 0.8,
+                steer: 0.3,
+            };
+            MIN_REPORT_SAMPLES
+        ];
+        analyzer.current_lap_invalid = true;
+        analyzer.latest_damage = Some(DamageSample {
+            session_time: 0.0,
+            frame_identifier: 0,
+            player_car_index: 0,
+            tyre_wear: WheelValuesF32 {
+                fl: 20.0,
+                fr: 20.0,
+                rl: 10.0,
+                rr: 10.0,
+            },
+            tyre_damage: crate::telemetry::WheelValuesU8 {
+                fl: 0,
+                fr: 0,
+                rl: 0,
+                rr: 0,
+            },
+            tyre_blisters: crate::telemetry::WheelValuesU8 {
+                fl: 0,
+                fr: 0,
+                rl: 0,
+                rr: 0,
+            },
+            front_left_wing_damage: 0,
+            front_right_wing_damage: 0,
+            rear_wing_damage: 0,
+        });
+
+        let analysis = analyzer.complete_lap(4, 90_000);
+
+        assert!(!analysis.clean);
+        assert!(analysis.recommendations.is_empty());
+        assert!(analysis.to_markdown().contains("Not evaluated"));
     }
 }

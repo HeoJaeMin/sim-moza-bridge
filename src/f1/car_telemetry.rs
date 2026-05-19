@@ -3,8 +3,9 @@ use super::header::parse_packet_header;
 use crate::telemetry::{InputSample, WheelValuesF32, WheelValuesU8, WheelValuesU16};
 
 pub const CAR_TELEMETRY_DATA_SIZE: usize = 60;
-pub const CAR_TELEMETRY_MIN_PACKET_SIZE: usize =
-    PACKET_HEADER_SIZE + MAX_CARS * CAR_TELEMETRY_DATA_SIZE;
+pub const CAR_TELEMETRY_PACKET_EXTRA_SIZE: usize = 3;
+pub const CAR_TELEMETRY_PACKET_SIZE: usize =
+    PACKET_HEADER_SIZE + MAX_CARS * CAR_TELEMETRY_DATA_SIZE + CAR_TELEMETRY_PACKET_EXTRA_SIZE;
 
 pub fn car_telemetry_offset(car_index: usize) -> Result<usize, String> {
     if car_index >= MAX_CARS {
@@ -67,8 +68,7 @@ pub fn parse_player_input_sample(packet: &[u8]) -> Result<InputSample, String> {
     let car_index = header.player_car_index as usize;
     let base = car_telemetry_offset(car_index)?;
 
-    if packet.len() < base + CAR_TELEMETRY_DATA_SIZE || packet.len() < CAR_TELEMETRY_MIN_PACKET_SIZE
-    {
+    if packet.len() < base + CAR_TELEMETRY_DATA_SIZE || packet.len() < CAR_TELEMETRY_PACKET_SIZE {
         return Err("packet is too short for F1 car telemetry data".to_owned());
     }
 
@@ -101,7 +101,7 @@ mod tests {
 
     #[test]
     fn parses_player_input_sample() {
-        let mut packet = vec![0_u8; CAR_TELEMETRY_MIN_PACKET_SIZE + 3];
+        let mut packet = vec![0_u8; CAR_TELEMETRY_PACKET_SIZE];
         packet[0..2].copy_from_slice(&F1_25_PACKET_FORMAT.to_le_bytes());
         packet[2] = 25;
         packet[6] = packet_id::CAR_TELEMETRY;
@@ -180,5 +180,12 @@ mod tests {
     #[test]
     fn rejects_short_packets() {
         assert!(parse_player_input_sample(&[1, 2, 3]).is_err());
+    }
+
+    #[test]
+    fn rejects_packets_missing_packet_level_tail() {
+        let packet = vec![0_u8; CAR_TELEMETRY_PACKET_SIZE - 1];
+
+        assert!(parse_player_input_sample(&packet).is_err());
     }
 }

@@ -21,8 +21,10 @@
 ## 요구 사항
 
 - 대상 게임과 MOZA Pit House가 실행되는 Windows PC
-- Rust 1.95 이상
+- 소스에서 직접 빌드할 경우 Rust 1.95 이상
 - UDP 기반 프로필의 경우 게임 내 UDP 텔레메트리 활성화
+
+집 PC에서 일반 실행만 할 때는 `sim-moza-bridge.exe`만 있으면 됩니다. Rust toolchain은 개발하거나 다시 빌드할 때만 필요합니다.
 
 ## F1 25 설정
 
@@ -44,6 +46,12 @@ MOZA Pit House는 F1 25 텔레메트리 입력으로 보통 `22025` 포트를 �
 
 ```bash
 cargo run -- --listen 20777 --moza-port 22025 --mode passthrough
+```
+
+배포된 exe로 실행:
+
+```powershell
+.\sim-moza-bridge.exe --listen 20777 --moza-port 22025 --mode passthrough
 ```
 
 F1 25 타이어 웨어 순서 보정:
@@ -166,7 +174,7 @@ v1/gameData/<TelemetryName>
 | --- | --- | --- |
 | `--game` | `auto` | `auto`, `f1-25`, `generic-udp`, `ace`, `lmu` |
 | `--listen` | 프로필 기본값 | 게임 UDP를 받는 포트 |
-| `--listen-host` | `0.0.0.0` | 수신 host/interface |
+| `--listen-host` | `127.0.0.1` | 수신 host/interface. 다른 PC에서 LAN으로 보낼 때만 `0.0.0.0` 사용 |
 | `--moza-host` | `127.0.0.1` | MOZA Pit House host |
 | `--moza-port` | 프로필 기본값 | MOZA Pit House 대상 포트 |
 | `--mode` | `passthrough` | `passthrough` 또는 `remap` |
@@ -204,6 +212,7 @@ v1/gameData/<TelemetryName>
 - F1 25 -> F1 24 packet down-conversion
 - SimHub 호환 대시보드 에디터
 - Mission R OLED 직접 렌더링
+- 서명된 Windows installer/release pipeline
 
 ## 안전 메모
 

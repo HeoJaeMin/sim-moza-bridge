@@ -76,7 +76,11 @@ impl TelemetryBridge {
         }
 
         let header = self.parse_known_protocol_header(packet, protocol)?;
-        let telemetry_update = parse_telemetry_update(packet, header.packet_id);
+        let telemetry_update = if is_supported_f1_25_header(&header) {
+            parse_telemetry_update(packet, header.packet_id)
+        } else {
+            TelemetryUpdate::default()
+        };
         let input_sample = telemetry_update.input.clone();
 
         if self.mode == BridgeMode::Passthrough {
@@ -89,7 +93,7 @@ impl TelemetryBridge {
             });
         }
 
-        if header.packet_format != F1_25_PACKET_FORMAT {
+        if !is_supported_f1_25_header(&header) {
             self.stats.ignored += 1;
             return Some(ProcessedPacket {
                 packet: packet.to_vec(),
@@ -181,6 +185,10 @@ impl TelemetryBridge {
     }
 }
 
+fn is_supported_f1_25_header(header: &PacketHeader) -> bool {
+    header.packet_format == F1_25_PACKET_FORMAT && header.game_year == 25
+}
+
 fn parse_telemetry_update(packet: &[u8], packet_id: u8) -> TelemetryUpdate {
     let mut update = TelemetryUpdate::default();
 
@@ -200,7 +208,7 @@ fn parse_telemetry_update(packet: &[u8], packet_id: u8) -> TelemetryUpdate {
 mod tests {
     use super::*;
     use crate::f1::car_damage::{CAR_DAMAGE_PACKET_SIZE, car_damage_offset};
-    use crate::f1::car_telemetry::{CAR_TELEMETRY_MIN_PACKET_SIZE, car_telemetry_offset};
+    use crate::f1::car_telemetry::{CAR_TELEMETRY_PACKET_SIZE, car_telemetry_offset};
     use crate::games::resolve_game_profile;
 
     fn make_f1_car_damage_packet() -> Vec<u8> {
@@ -227,7 +235,7 @@ mod tests {
     }
 
     fn make_f1_car_telemetry_packet() -> Vec<u8> {
-        let mut packet = vec![0_u8; CAR_TELEMETRY_MIN_PACKET_SIZE + 3];
+        let mut packet = vec![0_u8; CAR_TELEMETRY_PACKET_SIZE];
         packet[0..2].copy_from_slice(&F1_25_PACKET_FORMAT.to_le_bytes());
         packet[2] = 25;
         packet[6] = packet_id::CAR_TELEMETRY;
@@ -241,6 +249,13 @@ mod tests {
         packet[base + 10..base + 14].copy_from_slice(&0.125_f32.to_le_bytes());
         packet[base + 15] = 4_u8;
         packet[base + 16..base + 18].copy_from_slice(&9000_u16.to_le_bytes());
+        packet
+    }
+
+    fn make_unsupported_car_telemetry_packet() -> Vec<u8> {
+        let mut packet = make_f1_car_telemetry_packet();
+        packet[0..2].copy_from_slice(&2024_u16.to_le_bytes());
+        packet[2] = 24;
         packet
     }
 
@@ -308,5 +323,21 @@ mod tests {
         assert_eq!(sample.speed_kmh, 123);
         assert_eq!(sample.gear, 4);
         assert_eq!(sample.rpm, 9000);
+    }
+
+    #[test]
+    fn f1_profile_does_not_parse_unsupported_formats_for_analysis() {
+        let mut bridge = TelemetryBridge::new(
+            resolve_game_profile("f1-25").unwrap(),
+            BridgeMode::Passthrough,
+            false,
+        );
+
+        let result = bridge
+            .process(&make_unsupported_car_telemetry_packet())
+            .unwrap();
+
+        assert!(result.input_sample.is_none());
+        assert!(result.telemetry_update.is_empty());
     }
 }

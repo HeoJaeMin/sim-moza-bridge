@@ -7,6 +7,8 @@ use crate::config::BridgeConfig;
 use crate::hud::{HudHandle, start_hud_server};
 use crate::logging::{CornerLogger, InputLogger, write_analysis_report};
 
+const UDP_BUFFER_SIZE: usize = 65_535;
+
 pub fn start_udp_bridge(config: BridgeConfig) -> Result<(), String> {
     let receiver = UdpSocket::bind(format!("{}:{}", config.listen_host, config.listen_port))
         .map_err(|error| format!("bind failed: {error}"))?;
@@ -29,9 +31,10 @@ pub fn start_udp_bridge(config: BridgeConfig) -> Result<(), String> {
     } else {
         None
     };
+    let mut analysis_report = config.analysis_report.clone();
     let hud = start_optional_hud(&config)?;
     let mut last_stats = Instant::now();
-    let mut buffer = vec![0_u8; 4096];
+    let mut buffer = vec![0_u8; UDP_BUFFER_SIZE];
 
     println!(
         "{}\n{}\nmode={:?}\nfixTyreWearOrder={}",
@@ -48,6 +51,12 @@ pub fn start_udp_bridge(config: BridgeConfig) -> Result<(), String> {
         config.fix_tyre_wear_order
     );
     println!("game={} ({})", config.game.id, config.game.name);
+    if !is_loopback_host(&config.listen_host) {
+        eprintln!(
+            "[warning] listening on non-loopback host {}; LAN clients can send UDP packets to this bridge",
+            config.listen_host
+        );
+    }
     if let Some(path) = &config.input_log {
         println!("input logging enabled: {path}");
     }
@@ -82,33 +91,46 @@ pub fn start_udp_bridge(config: BridgeConfig) -> Result<(), String> {
         }
 
         if let Some(sample) = &result.input_sample {
-            if let Some(logger) = &mut input_logger {
-                logger.write(sample)?;
+            let input_log_error = input_logger
+                .as_mut()
+                .and_then(|logger| logger.write(sample).err());
+            if let Some(error) = input_log_error {
+                eprintln!("[log-error] {error}; disabling input logging");
+                input_logger = None;
             }
             if let Some(hud) = &hud {
                 hud.update(sample.clone());
             }
         }
 
-        if let Some(analyzer) = &mut analyzer {
-            if !result.telemetry_update.is_empty() {
-                if let Some(analysis) = analyzer.ingest(&result.telemetry_update) {
-                    if let Some(logger) = &mut corner_logger {
-                        logger.write(&analysis)?;
-                    }
-                    if let Some(path) = &config.analysis_report {
-                        write_analysis_report(path, &analysis)?;
-                    }
-                    if config.verbose {
-                        println!(
-                            "[analysis] lap={} clean={} samples={} recommendations={}",
-                            analysis.lap_num,
-                            analysis.clean,
-                            analysis.sample_count,
-                            analysis.recommendations.len()
-                        );
-                    }
-                }
+        if let Some(analyzer) = &mut analyzer
+            && !result.telemetry_update.is_empty()
+            && let Some(analysis) = analyzer.ingest(&result.telemetry_update)
+        {
+            let corner_log_error = corner_logger
+                .as_mut()
+                .and_then(|logger| logger.write(&analysis).err());
+            if let Some(error) = corner_log_error {
+                eprintln!("[log-error] {error}; disabling corner logging");
+                corner_logger = None;
+            }
+
+            let report_error = analysis_report
+                .as_deref()
+                .and_then(|path| write_analysis_report(path, &analysis).err());
+            if let Some(error) = report_error {
+                eprintln!("[log-error] {error}; disabling analysis report writes");
+                analysis_report = None;
+            }
+
+            if config.verbose {
+                println!(
+                    "[analysis] lap={} clean={} samples={} recommendations={}",
+                    analysis.lap_num,
+                    analysis.clean,
+                    analysis.sample_count,
+                    analysis.recommendations.len()
+                );
             }
         }
 
@@ -139,4 +161,8 @@ fn start_optional_hud(config: &BridgeConfig) -> Result<Option<HudHandle>, String
         .hud_http_port
         .map(|port| start_hud_server(&config.hud_host, port))
         .transpose()
+}
+
+fn is_loopback_host(host: &str) -> bool {
+    matches!(host, "127.0.0.1" | "localhost" | "::1")
 }

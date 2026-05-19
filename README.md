@@ -25,8 +25,10 @@ Auto detection is based on incoming telemetry packets, not process names. It can
 ## Requirements
 
 - Windows PC running the target sim and MOZA Pit House
-- Rust 1.95 or newer
+- Rust 1.95 or newer only when building from source
 - UDP telemetry enabled for UDP-backed profiles
+
+For normal home use, download or build `sim-moza-bridge.exe` and run that binary directly. Rust is not required on the gaming PC unless you are developing or rebuilding the project.
 
 ## F1 25 Settings
 
@@ -48,6 +50,12 @@ Passthrough mode sends packets unchanged. Use this first to prove F1 25, the bri
 
 ```bash
 cargo run -- --listen 20777 --moza-port 22025 --mode passthrough
+```
+
+Installed or release binary:
+
+```powershell
+.\sim-moza-bridge.exe --listen 20777 --moza-port 22025 --mode passthrough
 ```
 
 Tyre wear remap mode rewrites `Car Damage` packet tyre wear arrays from F1 wheel order to dashboard-friendly order before forwarding.
@@ -171,7 +179,7 @@ The bridge does not register new MOZA keys. For example, it cannot create `v1/ga
 | --- | --- | --- |
 | `--game` | `auto` | Game profile: `auto`, `f1-25`, `generic-udp`, `ace`, `lmu` |
 | `--listen` | Profile default | UDP port receiving game packets |
-| `--listen-host` | `0.0.0.0` | Host/interface to bind |
+| `--listen-host` | `127.0.0.1` | Host/interface to bind. Use `0.0.0.0` only when another PC must send telemetry over LAN |
 | `--moza-host` | `127.0.0.1` | MOZA Pit House host |
 | `--moza-port` | Profile default | MOZA Pit House target telemetry port |
 | `--mode` | `passthrough` | `passthrough` or `remap` |
@@ -209,6 +217,7 @@ Not implemented yet:
 - F1 25 to F1 24 packet down-conversion
 - Full SimHub-compatible dashboard editor
 - Direct Mission R OLED rendering
+- Signed Windows installer/release pipeline
 
 ## Safety Notes
 

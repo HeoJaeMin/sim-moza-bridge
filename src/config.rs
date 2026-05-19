@@ -1,7 +1,28 @@
 use std::env;
+use std::fmt;
 
 use crate::bridge::BridgeMode;
 use crate::games::{GameProfile, assert_udp_bridge_supported, resolve_game_profile};
+
+#[derive(Debug, PartialEq)]
+pub enum ConfigError {
+    Help(String),
+    Message(String),
+}
+
+impl fmt::Display for ConfigError {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::Help(text) | Self::Message(text) => formatter.write_str(text),
+        }
+    }
+}
+
+impl From<String> for ConfigError {
+    fn from(value: String) -> Self {
+        Self::Message(value)
+    }
+}
 
 #[derive(Clone, Debug)]
 pub struct BridgeConfig {
@@ -43,7 +64,7 @@ impl Default for RawArgs {
     fn default() -> Self {
         Self {
             game: "auto".to_owned(),
-            listen_host: "0.0.0.0".to_owned(),
+            listen_host: "127.0.0.1".to_owned(),
             listen: None,
             moza_host: "127.0.0.1".to_owned(),
             moza_port: None,
@@ -60,11 +81,11 @@ impl Default for RawArgs {
     }
 }
 
-pub fn read_config() -> Result<BridgeConfig, String> {
+pub fn read_config() -> Result<BridgeConfig, ConfigError> {
     parse_config_from(env::args().skip(1))
 }
 
-fn parse_config_from<I>(args: I) -> Result<BridgeConfig, String>
+fn parse_config_from<I>(args: I) -> Result<BridgeConfig, ConfigError>
 where
     I: IntoIterator<Item = String>,
 {
@@ -73,10 +94,10 @@ where
     assert_udp_bridge_supported(game)?;
 
     if raw.fix_tyre_wear_order && !game.supports_tyre_wear_order_fix {
-        return Err(
+        return Err(ConfigError::Message(
             "--fix-tyre-wear-order is only supported for F1-compatible or auto-detected profiles."
                 .to_owned(),
-        );
+        ));
     }
 
     Ok(BridgeConfig {
@@ -105,7 +126,7 @@ where
     })
 }
 
-fn parse_raw_args<I>(args: I) -> Result<RawArgs, String>
+fn parse_raw_args<I>(args: I) -> Result<RawArgs, ConfigError>
 where
     I: IntoIterator<Item = String>,
 {
@@ -130,8 +151,13 @@ where
             "--hud-http" => raw.hud_http_port = Some(next_value(&mut iter, "--hud-http")?),
             "--dry-run" => raw.dry_run = true,
             "--verbose" => raw.verbose = true,
-            "--help" | "-h" => return Err(help_text()),
-            unknown => return Err(format!("Unknown option {unknown}\n\n{}", help_text())),
+            "--help" | "-h" => return Err(ConfigError::Help(help_text())),
+            unknown => {
+                return Err(ConfigError::Message(format!(
+                    "Unknown option {unknown}\n\n{}",
+                    help_text()
+                )));
+            }
         }
     }
 
@@ -206,7 +232,7 @@ fn help_text() -> String {
 mod tests {
     use super::*;
 
-    fn parse(args: &[&str]) -> Result<BridgeConfig, String> {
+    fn parse(args: &[&str]) -> Result<BridgeConfig, ConfigError> {
         parse_config_from(args.iter().map(|value| (*value).to_owned()))
     }
 
@@ -214,6 +240,7 @@ mod tests {
     fn defaults_to_auto() {
         let config = parse(&[]).unwrap();
         assert_eq!(config.game.id, "auto");
+        assert_eq!(config.listen_host, "127.0.0.1");
         assert_eq!(config.listen_port, 20777);
         assert_eq!(config.moza_port, 22025);
         assert_eq!(config.mode, BridgeMode::Passthrough);
@@ -262,11 +289,13 @@ mod tests {
         assert!(
             parse(&["--game", "ace"])
                 .unwrap_err()
+                .to_string()
                 .contains("not a UDP bridge profile")
         );
         assert!(
             parse(&["--game", "lmu"])
                 .unwrap_err()
+                .to_string()
                 .contains("not a UDP bridge profile")
         );
     }
@@ -276,7 +305,16 @@ mod tests {
         assert!(
             parse(&["--game", "generic-udp", "--fix-tyre-wear-order"])
                 .unwrap_err()
+                .to_string()
                 .contains("F1-compatible")
         );
+    }
+
+    #[test]
+    fn help_is_distinct_from_startup_errors() {
+        assert!(matches!(
+            parse(&["--help"]),
+            Err(ConfigError::Help(message)) if message.contains("Usage: sim-moza-bridge")
+        ));
     }
 }
