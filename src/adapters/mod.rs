@@ -11,8 +11,9 @@ use std::thread;
 #[cfg(windows)]
 use std::time::{Duration, Instant};
 
-#[cfg(windows)]
 use crate::config::BridgeConfig;
+#[cfg(windows)]
+use crate::games::{ACE, LMU};
 #[cfg(windows)]
 use crate::hud::{HudHandle, start_hud_server};
 #[cfg(windows)]
@@ -22,6 +23,27 @@ use crate::telemetry::TelemetryUpdate;
 const POLL_INTERVAL: Duration = Duration::from_millis(50);
 #[cfg(windows)]
 const WARNING_INTERVAL: Duration = Duration::from_secs(2);
+
+#[cfg(windows)]
+pub fn start_detected_adapter(mut config: BridgeConfig) -> Option<Result<(), String>> {
+    if shared_memory::mapping_exists(lmu::LMU_MAPPING_NAME) {
+        config.game = LMU;
+        return Some(lmu::start_lmu_adapter(config));
+    }
+
+    if shared_memory::mapping_exists(ace::ACE_MAPPING_NAME) {
+        config.game = ACE;
+        return Some(ace::start_ace_adapter(config));
+    }
+
+    None
+}
+
+#[cfg(not(windows))]
+pub fn start_detected_adapter(config: BridgeConfig) -> Option<Result<(), String>> {
+    let _ = config;
+    None
+}
 
 #[cfg(windows)]
 fn run_shared_memory_adapter<F>(

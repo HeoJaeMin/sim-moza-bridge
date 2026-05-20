@@ -6,7 +6,7 @@ use crate::telemetry::{
     WheelValuesU8, WheelValuesU16,
 };
 
-const LMU_MAPPING_NAME: &str = "LMU_Data";
+pub(crate) const LMU_MAPPING_NAME: &str = "LMU_Data";
 const LMU_MAX_VEHICLES: usize = 104;
 const LMU_TELEMETRY_OFFSET: usize = 128_464;
 const LMU_PLAYER_INDEX_OFFSET: usize = LMU_TELEMETRY_OFFSET + 1;

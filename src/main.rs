@@ -26,9 +26,9 @@ fn main() {
     };
 
     let result = match config.game.protocol {
-        ProtocolKind::Auto | ProtocolKind::F1_25 | ProtocolKind::OpaqueUdp => {
-            udp::start_udp_bridge(config)
-        }
+        ProtocolKind::Auto => adapters::start_detected_adapter(config.clone())
+            .unwrap_or_else(|| udp::start_udp_bridge(config)),
+        ProtocolKind::F1_25 | ProtocolKind::OpaqueUdp => udp::start_udp_bridge(config),
         ProtocolKind::AssettoCorsaEvo => adapters::ace::start_ace_adapter(config),
         ProtocolKind::LeMansUltimate => adapters::lmu::start_lmu_adapter(config),
         ProtocolKind::AssettoCorsaRally => {

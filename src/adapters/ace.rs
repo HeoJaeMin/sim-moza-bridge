@@ -5,7 +5,7 @@ use crate::telemetry::{
     InputSample, StatusSample, TelemetryUpdate, WheelValuesF32, WheelValuesU8, WheelValuesU16,
 };
 
-const ACE_MAPPING_NAME: &str = "Local\\acevo_pmf_physics";
+pub(crate) const ACE_MAPPING_NAME: &str = "Local\\acevo_pmf_physics";
 const ACE_PHYSICS_MIN_SIZE: usize = 32;
 
 pub fn start_ace_adapter(config: BridgeConfig) -> Result<(), String> {

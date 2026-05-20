@@ -54,3 +54,18 @@ pub fn read_mapping(name: &str, size: usize) -> Result<Vec<u8>, String> {
         Ok(bytes)
     }
 }
+
+#[cfg(windows)]
+pub fn mapping_exists(name: &str) -> bool {
+    let wide_name: Vec<u16> = OsStr::new(name).encode_wide().chain(Some(0)).collect();
+
+    unsafe {
+        let handle = OpenFileMappingW(FILE_MAP_READ, 0, wide_name.as_ptr());
+        if handle.is_null() {
+            false
+        } else {
+            CloseHandle(handle);
+            true
+        }
+    }
+}
