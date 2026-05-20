@@ -6,7 +6,7 @@ use crate::telemetry::{
 };
 
 pub(crate) const ACE_MAPPING_NAME: &str = "Local\\acevo_pmf_physics";
-const ACE_PHYSICS_MIN_SIZE: usize = 32;
+pub(crate) const ACE_PHYSICS_MIN_SIZE: usize = 32;
 
 pub fn start_ace_adapter(config: BridgeConfig) -> Result<(), String> {
     #[cfg(not(windows))]
@@ -29,7 +29,7 @@ pub fn start_ace_adapter(config: BridgeConfig) -> Result<(), String> {
     }
 }
 
-fn parse_ace_update(
+pub(crate) fn parse_ace_update(
     snapshot: &[u8],
     frame_identifier: u32,
 ) -> Result<Option<TelemetryUpdate>, String> {

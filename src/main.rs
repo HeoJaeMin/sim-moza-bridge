@@ -1,5 +1,6 @@
 mod adapters;
 mod analysis;
+mod auto_runtime;
 mod bridge;
 mod config;
 mod detect;
@@ -26,8 +27,7 @@ fn main() {
     };
 
     let result = match config.game.protocol {
-        ProtocolKind::Auto => adapters::start_detected_adapter(config.clone())
-            .unwrap_or_else(|| udp::start_udp_bridge(config)),
+        ProtocolKind::Auto => auto_runtime::start_auto_runtime(config),
         ProtocolKind::F1_25 | ProtocolKind::OpaqueUdp => udp::start_udp_bridge(config),
         ProtocolKind::AssettoCorsaEvo => adapters::ace::start_ace_adapter(config),
         ProtocolKind::LeMansUltimate => adapters::lmu::start_lmu_adapter(config),

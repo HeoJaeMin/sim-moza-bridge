@@ -38,7 +38,8 @@ cargo run -- --game lmu
 cargo run -- --game ace
 ```
 
-- 기본 `cargo run`도 시작 시 `LMU_Data` 또는 `Local\acevo_pmf_physics`가 이미 떠 있으면 해당 adapter로 자동 진입합니다.
+- 기본 `cargo run`은 F1 UDP, `LMU_Data`, `Local\acevo_pmf_physics`를 함께 감시합니다. LMU를 하다가 F1 25를 시작해도 브리지를 껐다 켤 필요 없이 F1 UDP가 들어오면 자동으로 F1 경로를 우선합니다.
+- `--game lmu`와 `--game ace`는 해당 adapter 고정 실행입니다.
 - LMU adapter는 `LMU_Data` 공유 메모리를 읽고 HUD에 속도, RPM, 기어, 입력, 타이어/브레이크, 연료, 앞/뒤 차 gap을 표시합니다.
 - ACE adapter는 `Local\acevo_pmf_physics` 공유 메모리를 읽고 HUD에 기본 주행 텔레메트리를 표시합니다.
 - 공유 메모리가 아직 없으면 Windows에서는 adapter가 켜진 상태로 게임 세션을 기다립니다.

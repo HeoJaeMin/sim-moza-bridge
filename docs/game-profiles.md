@@ -13,7 +13,9 @@ cargo run -- --game lmu
 cargo run -- --game ace
 ```
 
-Windows에서 기본 `cargo run`을 실행할 때 `LMU_Data` 또는 `Local\acevo_pmf_physics`가 이미 떠 있으면 브리지는 해당 adapter를 먼저 구동합니다. 둘 다 없으면 기존 F1/UDP 자동 감지 경로로 시작합니다.
+Windows에서 기본 `cargo run`은 F1 UDP, `LMU_Data`, `Local\acevo_pmf_physics`를 함께 감시합니다. F1 25 UDP가 들어오면 F1 경로를 우선하고, F1 입력이 멈추면 LMU/ACE 공유 메모리 경로를 다시 읽습니다.
+
+`--game lmu`와 `--game ace`는 명시적으로 해당 adapter만 고정 실행할 때 사용합니다.
 
 포트를 바꿔야 할 때만 지정합니다. 포트 옵션은 F1/UDP 경로에만 의미가 있습니다.
 

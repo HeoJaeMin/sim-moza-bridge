@@ -13,7 +13,8 @@ const LMU_PLAYER_INDEX_OFFSET: usize = LMU_TELEMETRY_OFFSET + 1;
 const LMU_PLAYER_HAS_VEHICLE_OFFSET: usize = LMU_TELEMETRY_OFFSET + 2;
 const LMU_TELEM_INFO_OFFSET: usize = LMU_TELEMETRY_OFFSET + 4;
 const LMU_TELEM_INFO_SIZE: usize = 1_888;
-const LMU_VIEW_SIZE: usize = LMU_TELEM_INFO_OFFSET + LMU_TELEM_INFO_SIZE * LMU_MAX_VEHICLES;
+pub(crate) const LMU_VIEW_SIZE: usize =
+    LMU_TELEM_INFO_OFFSET + LMU_TELEM_INFO_SIZE * LMU_MAX_VEHICLES;
 
 const LOCAL_VEL_OFFSET: usize = 184;
 const GEAR_OFFSET: usize = 352;
@@ -65,7 +66,7 @@ pub fn start_lmu_adapter(config: BridgeConfig) -> Result<(), String> {
     }
 }
 
-fn parse_lmu_update(
+pub(crate) fn parse_lmu_update(
     snapshot: &[u8],
     frame_identifier: u32,
 ) -> Result<Option<TelemetryUpdate>, String> {
