@@ -73,6 +73,7 @@ F1 25의 모든 휠 배열은 같은 인덱스 순서를 씁니다.
 | 표시/분석 지표 | F1 25 원본 필드 | MOZA F1 키 가능성 | 브리지 처리 방향 |
 | --- | --- | --- | --- |
 | 앞차와의 차이 | `PacketLapData.m_lapData[playerCarIndex].m_deltaToCarInFrontMinutesPart`, `m_deltaToCarInFrontMSPart` | MOZA 표의 `Gap`은 F1 24 컬럼 미지원. `FrontGap` 같은 키도 표에 없음 | `minutes * 60000 + ms`로 밀리초 차이를 생성. `minutes == 255`는 무효값으로 처리. 로컬 HUD/리포트용 |
+| 뒤차와의 차이 | 바로 뒤 순위 차량의 `m_deltaToCarInFrontMinutesPart`, `m_deltaToCarInFrontMSPart` | 직접 키 없음 | 플레이어보다 한 순위 뒤 차량의 앞차 gap을 player 기준 뒤차 gap으로 파생. 로컬 HUD용 |
 | 선두와의 차이 | `PacketLapData.m_lapData[playerCarIndex].m_deltaToRaceLeaderMinutesPart`, `m_deltaToRaceLeaderMSPart` | 직접 키 없음 | 선두와의 차이로 별도 표시. MOZA Pit House 키 주입은 불가 |
 | 세이프티카 델타 | `PacketLapData.m_lapData[playerCarIndex].m_safetyCarDelta` | 직접 키 없음 | 세이프티카/VSC HUD 또는 분석용 |
 | 현재 순위 | `m_lapData[playerCarIndex].m_carPosition` | `Pos` | 직접 대응 |

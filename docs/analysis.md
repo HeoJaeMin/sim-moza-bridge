@@ -9,7 +9,7 @@
 | 패킷 | 사용 값 |
 | --- | --- |
 | `PacketCarTelemetryData` | 스로틀, 브레이크, 조향, 속도, 기어, RPM, DRS, REV, 타이어 온도 |
-| `PacketLapData` | 랩 번호, 랩 거리, 현재 랩 타임, 무효 랩 플래그, 피트 상태, 앞차/선두와의 차이 |
+| `PacketLapData` | 랩 번호, 랩 거리, 현재 랩 타임, 무효 랩 플래그, 피트 상태, 앞차/뒤차/선두와의 차이 |
 | `PacketSessionData` | 구간 크기 계산용 트랙 길이 |
 | `PacketCarStatusData` | 연료, 브레이크 바이어스, ERS, 타이어 컴파운드, 타이어 사용 랩 수 |
 | `PacketCarDamageData` | 타이어 웨어와 손상 |

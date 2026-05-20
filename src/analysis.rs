@@ -565,6 +565,7 @@ mod tests {
             driver_status: 4,
             result_status: 2,
             delta_to_car_in_front_ms: None,
+            delta_to_car_behind_ms: None,
             delta_to_race_leader_ms: None,
             sector1_time_ms: None,
             sector2_time_ms: None,

@@ -123,6 +123,7 @@ F1 휠 배열은 항상 `0=RL`, `1=RR`, `2=FL`, `3=FR`입니다. 아래 이름 �
 | 로컬 필드 | F1 25 원본 | 로컬 전용 이유 |
 | --- | --- | --- |
 | `frontGapMs` | `m_deltaToCarInFrontMinutesPart`, `m_deltaToCarInFrontMSPart` | 수집한 표에서 MOZA `Gap`은 F1-family 지원으로 표시되지 않음 |
+| `behindGapMs` | 바로 뒤 순위 차량의 `m_deltaToCarInFrontMinutesPart`, `m_deltaToCarInFrontMSPart` | 확정된 Pit House 키 없음. 로컬 HUD에서 player 기준 뒤차 gap으로 파생 |
 | `leaderGapMs` | `m_deltaToRaceLeaderMinutesPart`, `m_deltaToRaceLeaderMSPart` | 확정된 `LeaderGap`/`BehindGap` Pit House 키 없음 |
 | `steer` | `PacketCarTelemetryData.m_steer` | 확정된 MOZA F1 대시보드 키 없음 |
 | `revLightsBitValue` | `PacketCarTelemetryData.m_revLightsBitValue` | 로컬/휠 LED에는 유용하지만 확정 MOZA 키 없음 |
