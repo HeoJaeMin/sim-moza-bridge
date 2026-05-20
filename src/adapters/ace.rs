@@ -8,7 +8,6 @@ use crate::telemetry::{
 
 pub(crate) const ACE_MAPPING_NAME: &str = "Local\\acevo_pmf_physics";
 const WHEEL_PRESSURE_OFFSET: usize = 88;
-const TYRE_WEAR_OFFSET: usize = 120;
 const TYRE_CORE_TEMP_OFFSET: usize = 152;
 const BRAKE_TEMP_OFFSET: usize = 348;
 const TYRE_TEMP_INNER_OFFSET: usize = 368;
@@ -75,7 +74,7 @@ pub(crate) fn parse_ace_update(
             session_time: 0.0,
             frame_identifier,
             player_car_index: 0,
-            tyre_wear: read_tyre_wear(snapshot)?,
+            tyre_wear: unknown_tyre_wear_wheels(),
             tyre_damage: zero_u8_wheels(),
             tyre_blisters: zero_u8_wheels(),
             front_left_wing_damage: 0,
@@ -152,19 +151,6 @@ fn read_pressures(bytes: &[u8]) -> Result<WheelValuesF32, String> {
     read_wheel_f32(bytes, WHEEL_PRESSURE_OFFSET, finite_nonnegative)
 }
 
-fn read_tyre_wear(bytes: &[u8]) -> Result<WheelValuesF32, String> {
-    let raw = read_wheel_f32(bytes, TYRE_WEAR_OFFSET, |value| value)?;
-    if all_wheels_unreported(raw) {
-        return Ok(unknown_tyre_wear_wheels());
-    }
-    Ok(WheelValuesF32 {
-        fl: tyre_condition_to_wear_percent(raw.fl),
-        fr: tyre_condition_to_wear_percent(raw.fr),
-        rl: tyre_condition_to_wear_percent(raw.rl),
-        rr: tyre_condition_to_wear_percent(raw.rr),
-    })
-}
-
 fn read_wheel_f32<F>(bytes: &[u8], offset: usize, convert: F) -> Result<WheelValuesF32, String>
 where
     F: Fn(f32) -> f32,
@@ -226,22 +212,6 @@ fn finite_nonnegative(value: f32) -> f32 {
     } else {
         0.0
     }
-}
-
-fn tyre_condition_to_wear_percent(value: f32) -> f32 {
-    if !value.is_finite() || value <= 0.0 {
-        UNKNOWN_TYRE_WEAR_PERCENT
-    } else if value <= 1.0 {
-        (1.0 - value) * 100.0
-    } else {
-        (100.0 - value).clamp(0.0, 100.0)
-    }
-}
-
-fn all_wheels_unreported(values: WheelValuesF32) -> bool {
-    [values.fl, values.fr, values.rl, values.rr]
-        .into_iter()
-        .all(|value| !value.is_finite() || value <= 0.0)
 }
 
 fn unknown_tyre_wear_wheels() -> WheelValuesF32 {
@@ -321,7 +291,6 @@ mod tests {
             WHEEL_PRESSURE_OFFSET,
             [25.1, 25.2, 24.8, 24.9],
         );
-        write_wheel_f32(&mut snapshot, TYRE_WEAR_OFFSET, [98.0, 97.5, 96.0, 95.25]);
         write_wheel_f32(
             &mut snapshot,
             TYRE_CORE_TEMP_OFFSET,
@@ -359,10 +328,10 @@ mod tests {
         assert_eq!(input.tyre_inner_temps_c.fl, 82);
         assert_eq!(input.tyre_surface_temps_c.fl, 74);
         assert_eq!(input.brake_temps_c.fl, 421);
-        assert!((damage.tyre_wear.fl - 2.0).abs() < 0.001);
-        assert!((damage.tyre_wear.fr - 2.5).abs() < 0.001);
-        assert!((damage.tyre_wear.rl - 4.0).abs() < 0.001);
-        assert!((damage.tyre_wear.rr - 4.75).abs() < 0.001);
+        assert_eq!(damage.tyre_wear.fl, UNKNOWN_TYRE_WEAR_PERCENT);
+        assert_eq!(damage.tyre_wear.fr, UNKNOWN_TYRE_WEAR_PERCENT);
+        assert_eq!(damage.tyre_wear.rl, UNKNOWN_TYRE_WEAR_PERCENT);
+        assert_eq!(damage.tyre_wear.rr, UNKNOWN_TYRE_WEAR_PERCENT);
     }
 
     fn write_f32_le(bytes: &mut [u8], offset: usize, value: f32) {
