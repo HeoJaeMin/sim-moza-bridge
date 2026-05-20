@@ -80,6 +80,17 @@
         <tr><td>UDP Format</td><td><code>2025</code></td></tr>
       </tbody>
     </table>
+    <h2>LMU / ACE 설정</h2>
+    <p>LMU와 ACE는 F1 25처럼 게임 안 UDP 포트만 맞추는 방식으로 이 브리지에 직접 연결되지 않습니다. Windows 게임 PC에서 각 게임을 실행한 뒤 해당 adapter를 선택합니다.</p>
+    <pre><code>cargo run -- --game lmu
+cargo run -- --game ace</code></pre>
+    <ul>
+      <li>기본 <code>cargo run</code>은 F1 UDP, <code>LMU_Data</code>, <code>Local\acevo_pmf_physics</code>를 함께 감시합니다. LMU를 하다가 F1 25를 시작해도 브리지를 껐다 켤 필요 없이 F1 UDP가 들어오면 자동으로 F1 경로를 우선합니다.</li>
+      <li><code>--game lmu</code>와 <code>--game ace</code>는 해당 adapter 고정 실행입니다.</li>
+      <li>LMU adapter는 <code>LMU_Data</code> 공유 메모리를 읽고 HUD에 속도, RPM, 기어, 입력, 타이어/브레이크, 연료, 앞/뒤 차 gap을 표시합니다.</li>
+      <li>ACE adapter는 <code>Local\acevo_pmf_physics</code> 공유 메모리를 읽고 HUD에 기본 주행 텔레메트리를 표시합니다.</li>
+      <li>공유 메모리가 아직 없으면 Windows에서는 adapter가 켜진 상태로 게임 세션을 기다립니다.</li>
+    </ul>
 
     <h2>실행</h2>
     <p>기본 실행:</p>
@@ -108,6 +119,7 @@
     <table>
       <thead><tr><th>옵션</th><th>기본값</th><th>설명</th></tr></thead>
       <tbody>
+        <tr><td><code>--game</code></td><td><code>auto</code></td><td><code>auto</code>, <code>f1-25</code>, <code>generic-udp</code>, <code>lmu</code>, <code>ace</code>, <code>acr</code> 중 선택</td></tr>
         <tr><td><code>--listen</code></td><td><code>20777</code></td><td>F1 25 UDP를 받는 포트</td></tr>
         <tr><td><code>--moza-port</code></td><td><code>22025</code></td><td>MOZA Pit House로 전달할 포트</td></tr>
         <tr><td><code>--debug</code></td><td><code>false</code></td><td>패치 로그와 초당 통계 출력</td></tr>

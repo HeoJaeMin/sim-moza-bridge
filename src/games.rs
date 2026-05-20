@@ -89,7 +89,7 @@ pub const ACE: GameProfile = GameProfile {
     supports_tyre_wear_order_fix: false,
     notes: &[
         "ACE exposes telemetry through local shared-memory style integrations, not a simple UDP output.",
-        "Early Access updates can change the shared-memory layout, so a future adapter needs version guards.",
+        "The current adapter reads the ACE physics shared-memory mapping for HUD telemetry.",
     ],
 };
 
@@ -121,7 +121,7 @@ pub const LMU: GameProfile = GameProfile {
     supports_tyre_wear_order_fix: false,
     notes: &[
         "MOZA lists native telemetry support for LMU and the digital-dash key matrix includes a Le mans ultimate column.",
-        "Some third-party dashboards still use the rF2 shared-memory plugin path, so a future adapter should support native/shared-memory and plugin-backed deployments.",
+        "The current adapter reads LMU_Data shared memory for HUD telemetry.",
     ],
 };
 

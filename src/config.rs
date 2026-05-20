@@ -2,7 +2,7 @@ use std::env;
 use std::fmt;
 
 use crate::bridge::BridgeMode;
-use crate::games::{AUTO, GameProfile};
+use crate::games::{AUTO, GameProfile, resolve_game_profile};
 
 #[derive(Debug, PartialEq)]
 pub enum ConfigError {
@@ -45,6 +45,7 @@ pub struct BridgeConfig {
 
 #[derive(Debug, Default)]
 struct RawArgs {
+    game: Option<String>,
     listen: Option<String>,
     moza_port: Option<String>,
     debug: bool,
@@ -59,13 +60,25 @@ where
     I: IntoIterator<Item = String>,
 {
     let raw = parse_raw_args(args)?;
+    let game = match raw.game.as_deref() {
+        Some(value) => resolve_game_profile(value)?,
+        None => AUTO,
+    };
 
     Ok(BridgeConfig {
-        game: AUTO,
+        game,
         listen_host: "127.0.0.1".to_owned(),
-        listen_port: parse_optional_port(raw.listen.as_deref(), 20777, "--listen")?,
+        listen_port: parse_optional_port(
+            raw.listen.as_deref(),
+            game.default_listen_port.unwrap_or(20777),
+            "--listen",
+        )?,
         moza_host: "127.0.0.1".to_owned(),
-        moza_port: parse_optional_port(raw.moza_port.as_deref(), 22025, "--moza-port")?,
+        moza_port: parse_optional_port(
+            raw.moza_port.as_deref(),
+            game.default_moza_port.unwrap_or(22025),
+            "--moza-port",
+        )?,
         mode: BridgeMode::Remap,
         fix_tyre_wear_order: false,
         f1_24_car_damage_compat: true,
@@ -88,6 +101,7 @@ where
 
     while let Some(arg) = iter.next() {
         match arg.as_str() {
+            "--game" => raw.game = Some(next_value(&mut iter, "--game")?),
             "--listen" => raw.listen = Some(next_value(&mut iter, "--listen")?),
             "--moza-port" => raw.moza_port = Some(next_value(&mut iter, "--moza-port")?),
             "--debug" => raw.debug = true,
@@ -135,6 +149,7 @@ fn help_text() -> String {
         "Usage: sim-moza-bridge [options]",
         "",
         "Options:",
+        "  --game <auto|f1-25|generic-udp|lmu|lu|ace|acr>",
         "  --listen <port>",
         "  --moza-port <port>",
         "  --debug",
@@ -176,9 +191,30 @@ mod tests {
     }
 
     #[test]
+    fn parses_game_profiles_that_support_udp_bridge() {
+        let f1 = parse(&["--game", "f1-25"]).unwrap();
+        assert_eq!(f1.game.id, "f1-25");
+
+        let generic = parse(&["--game", "generic-udp"]).unwrap();
+        assert_eq!(generic.game.id, "generic-udp");
+    }
+
+    #[test]
+    fn parses_shared_memory_game_profiles() {
+        let lmu = parse(&["--game", "lmu"]).unwrap();
+        assert_eq!(lmu.game.id, "lmu");
+        assert_eq!(lmu.listen_port, 20777);
+        assert_eq!(lmu.moza_port, 22025);
+
+        let ace = parse(&["--game", "ace"]).unwrap();
+        assert_eq!(ace.game.id, "ace");
+        assert_eq!(ace.listen_port, 20777);
+        assert_eq!(ace.moza_port, 22025);
+    }
+
+    #[test]
     fn rejects_removed_options() {
         for option in [
-            "--game",
             "--mode",
             "--fix-tyre-wear-order",
             "--f1-24-car-damage-compat",
