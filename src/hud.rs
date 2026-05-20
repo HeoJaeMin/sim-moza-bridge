@@ -740,7 +740,7 @@ const HUD_HTML: &str = r#"<!doctype html>
 <script>
 const clamp = (value, min, max) => Math.max(min, Math.min(max, value));
 const pct = value => clamp(Math.round((value || 0) * 100), 0, 100);
-const percentValue = value => value === null || value === undefined ? '--%' : clamp(Math.round(value), 0, 100) + '%';
+const percentValue = value => value === null || value === undefined || value < 0 ? '--%' : clamp(Math.round(value), 0, 100) + '%';
 const numberValue = (value, suffix = '', digits = 0) => value === null || value === undefined ? '--' + suffix : Number(value).toFixed(digits) + suffix;
 const intValue = (value, suffix = '') => value === null || value === undefined ? '--' + suffix : Math.round(value) + suffix;
 const setText = (id, value) => { document.getElementById(id).textContent = value; };

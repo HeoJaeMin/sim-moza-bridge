@@ -14,6 +14,7 @@ const BRAKE_TEMP_OFFSET: usize = 348;
 const TYRE_TEMP_INNER_OFFSET: usize = 368;
 const TYRE_TEMP_MIDDLE_OFFSET: usize = 384;
 const TYRE_TEMP_OUTER_OFFSET: usize = 400;
+const UNKNOWN_TYRE_WEAR_PERCENT: f32 = -1.0;
 pub(crate) const ACE_PHYSICS_MIN_SIZE: usize = TYRE_TEMP_OUTER_OFFSET + 16;
 
 pub fn start_ace_adapter(config: BridgeConfig) -> Result<(), String> {
@@ -152,7 +153,16 @@ fn read_pressures(bytes: &[u8]) -> Result<WheelValuesF32, String> {
 }
 
 fn read_tyre_wear(bytes: &[u8]) -> Result<WheelValuesF32, String> {
-    read_wheel_f32(bytes, TYRE_WEAR_OFFSET, tyre_condition_to_wear_percent)
+    let raw = read_wheel_f32(bytes, TYRE_WEAR_OFFSET, |value| value)?;
+    if all_wheels_unreported(raw) {
+        return Ok(unknown_tyre_wear_wheels());
+    }
+    Ok(WheelValuesF32 {
+        fl: tyre_condition_to_wear_percent(raw.fl),
+        fr: tyre_condition_to_wear_percent(raw.fr),
+        rl: tyre_condition_to_wear_percent(raw.rl),
+        rr: tyre_condition_to_wear_percent(raw.rr),
+    })
 }
 
 fn read_wheel_f32<F>(bytes: &[u8], offset: usize, convert: F) -> Result<WheelValuesF32, String>
@@ -220,11 +230,26 @@ fn finite_nonnegative(value: f32) -> f32 {
 
 fn tyre_condition_to_wear_percent(value: f32) -> f32 {
     if !value.is_finite() || value <= 0.0 {
-        0.0
+        UNKNOWN_TYRE_WEAR_PERCENT
     } else if value <= 1.0 {
         (1.0 - value) * 100.0
     } else {
         (100.0 - value).clamp(0.0, 100.0)
+    }
+}
+
+fn all_wheels_unreported(values: WheelValuesF32) -> bool {
+    [values.fl, values.fr, values.rl, values.rr]
+        .into_iter()
+        .all(|value| !value.is_finite() || value <= 0.0)
+}
+
+fn unknown_tyre_wear_wheels() -> WheelValuesF32 {
+    WheelValuesF32 {
+        rl: UNKNOWN_TYRE_WEAR_PERCENT,
+        rr: UNKNOWN_TYRE_WEAR_PERCENT,
+        fl: UNKNOWN_TYRE_WEAR_PERCENT,
+        fr: UNKNOWN_TYRE_WEAR_PERCENT,
     }
 }
 
@@ -284,7 +309,7 @@ mod tests {
         assert_eq!(input.tyre_surface_temps_c.fl, 0);
         assert_eq!(input.tyre_inner_temps_c.fl, 0);
         assert_eq!(input.tyre_pressures_psi.fl, 0.0);
-        assert_eq!(damage.tyre_wear.fl, 0.0);
+        assert_eq!(damage.tyre_wear.fl, UNKNOWN_TYRE_WEAR_PERCENT);
         assert!((status.fuel_in_tank - 48.5).abs() < 0.001);
     }
 
