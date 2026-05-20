@@ -108,43 +108,6 @@ impl InputSample {
             self.tyre_pressures_psi.fr
         )
     }
-
-    pub fn to_json(&self) -> String {
-        format!(
-            concat!(
-                "{{",
-                "\"sessionTime\":{:.3},",
-                "\"frameIdentifier\":{},",
-                "\"playerCarIndex\":{},",
-                "\"throttle\":{:.5},",
-                "\"brake\":{:.5},",
-                "\"steer\":{:.5},",
-                "\"clutch\":{},",
-                "\"speedKmh\":{},",
-                "\"gear\":{},",
-                "\"rpm\":{},",
-                "\"drs\":{},",
-                "\"revLightsPercent\":{},",
-                "\"revLightsBitValue\":{},",
-                "\"engineTempC\":{}",
-                "}}"
-            ),
-            self.session_time,
-            self.frame_identifier,
-            self.player_car_index,
-            self.throttle,
-            self.brake,
-            self.steer,
-            self.clutch,
-            self.speed_kmh,
-            self.gear,
-            self.rpm,
-            self.drs,
-            self.rev_lights_percent,
-            self.rev_lights_bit_value,
-            self.engine_temp_c
-        )
-    }
 }
 
 #[derive(Clone, Debug, PartialEq)]
@@ -164,6 +127,7 @@ pub struct LapSample {
     pub driver_status: u8,
     pub result_status: u8,
     pub delta_to_car_in_front_ms: Option<u32>,
+    pub delta_to_car_behind_ms: Option<u32>,
     pub delta_to_race_leader_ms: Option<u32>,
     pub sector1_time_ms: Option<u32>,
     pub sector2_time_ms: Option<u32>,

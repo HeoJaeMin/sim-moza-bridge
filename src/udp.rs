@@ -107,9 +107,12 @@ pub fn start_udp_bridge(config: BridgeConfig) -> Result<(), String> {
                 eprintln!("[log-error] {error}; disabling input logging");
                 input_logger = None;
             }
-            if let Some(hud) = &hud {
-                hud.update(sample.clone());
-            }
+        }
+
+        if let Some(hud) = &hud
+            && !result.telemetry_update.is_empty()
+        {
+            hud.update(&result.telemetry_update);
         }
 
         if let Some(analyzer) = &mut analyzer

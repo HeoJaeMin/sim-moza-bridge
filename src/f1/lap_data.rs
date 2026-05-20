@@ -55,6 +55,26 @@ fn read_time_ms(packet: &[u8], ms_offset: usize, min_offset: usize) -> Option<u3
     Some(minutes * 60_000 + ms)
 }
 
+fn read_delta_to_car_behind_ms(packet: &[u8], player_position: u8) -> Option<u32> {
+    if player_position == 0 {
+        return None;
+    }
+
+    let behind_position = player_position.checked_add(1)?;
+    if behind_position > MAX_CARS as u8 {
+        return None;
+    }
+
+    for car_index in 0..MAX_CARS {
+        let base = lap_data_offset(car_index).ok()?;
+        if packet[base + 32] == behind_position {
+            return read_delta_ms(packet, base + 14, base + 16);
+        }
+    }
+
+    None
+}
+
 pub fn parse_player_lap_sample(packet: &[u8]) -> Result<LapSample, String> {
     let header = parse_packet_header(packet)
         .ok_or_else(|| "packet is too short for F1 header".to_owned())?;
@@ -65,6 +85,8 @@ pub fn parse_player_lap_sample(packet: &[u8]) -> Result<LapSample, String> {
         return Err("packet is too short for F1 lap data".to_owned());
     }
 
+    let car_position = packet[base + 32];
+
     Ok(LapSample {
         session_time: header.session_time,
         frame_identifier: header.frame_identifier,
@@ -72,10 +94,11 @@ pub fn parse_player_lap_sample(packet: &[u8]) -> Result<LapSample, String> {
         last_lap_time_ms: read_u32_le(packet, base),
         current_lap_time_ms: read_u32_le(packet, base + 4),
         delta_to_car_in_front_ms: read_delta_ms(packet, base + 14, base + 16),
+        delta_to_car_behind_ms: read_delta_to_car_behind_ms(packet, car_position),
         delta_to_race_leader_ms: read_delta_ms(packet, base + 17, base + 19),
         lap_distance_m: read_f32_le(packet, base + 20),
         total_distance_m: read_f32_le(packet, base + 24),
-        car_position: packet[base + 32],
+        car_position,
         current_lap_num: packet[base + 33],
         pit_status: packet[base + 34],
         sector: packet[base + 36],
@@ -122,6 +145,10 @@ mod tests {
         packet[base + 37] = 1;
         packet[base + 44] = 4;
         packet[base + 45] = 2;
+        let behind_base = lap_data_offset(4).unwrap();
+        packet[behind_base + 14..behind_base + 16].copy_from_slice(&234_u16.to_le_bytes());
+        packet[behind_base + 16] = 0;
+        packet[behind_base + 32] = 4;
 
         assert_eq!(
             parse_player_lap_sample(&packet).unwrap(),
@@ -141,6 +168,7 @@ mod tests {
                 driver_status: 4,
                 result_status: 2,
                 delta_to_car_in_front_ms: Some(60_456),
+                delta_to_car_behind_ms: Some(234),
                 delta_to_race_leader_ms: Some(789),
                 sector1_time_ms: Some(11_111),
                 sector2_time_ms: Some(82_222),
