@@ -3,6 +3,7 @@ use std::collections::BTreeMap;
 use crate::detect::detect_game_profile_from_packet;
 use crate::f1::car_damage::{
     parse_player_damage_sample, rewrite_all_tyre_wear_to_moza_named_order,
+    to_f1_24_car_damage_compat_packet,
 };
 use crate::f1::car_status::parse_player_status_sample;
 use crate::f1::car_telemetry::parse_player_input_sample;
@@ -43,16 +44,23 @@ pub struct TelemetryBridge {
     active_game: GameProfile,
     mode: BridgeMode,
     fix_tyre_wear_order: bool,
+    f1_24_car_damage_compat: bool,
     pub stats: BridgeStats,
 }
 
 impl TelemetryBridge {
-    pub fn new(game: GameProfile, mode: BridgeMode, fix_tyre_wear_order: bool) -> Self {
+    pub fn new(
+        game: GameProfile,
+        mode: BridgeMode,
+        fix_tyre_wear_order: bool,
+        f1_24_car_damage_compat: bool,
+    ) -> Self {
         Self {
             game,
             active_game: game,
             mode,
             fix_tyre_wear_order,
+            f1_24_car_damage_compat,
             stats: BridgeStats::default(),
         }
     }
@@ -104,20 +112,46 @@ impl TelemetryBridge {
             });
         }
 
-        if self.fix_tyre_wear_order && header.packet_id == packet_id::CAR_DAMAGE {
+        if header.packet_id == packet_id::CAR_DAMAGE
+            && (self.fix_tyre_wear_order || self.f1_24_car_damage_compat)
+        {
             let mut patched_packet = packet.to_vec();
-            if rewrite_all_tyre_wear_to_moza_named_order(&mut patched_packet) {
-                self.stats.patched += 1;
-                return Some(ProcessedPacket {
-                    packet: patched_packet,
-                    patched: true,
-                    detected_game,
-                    input_sample,
-                    telemetry_update,
-                });
+
+            if self.fix_tyre_wear_order {
+                if !rewrite_all_tyre_wear_to_moza_named_order(&mut patched_packet) {
+                    self.stats.malformed += 1;
+                    return Some(ProcessedPacket {
+                        packet: packet.to_vec(),
+                        patched: false,
+                        detected_game,
+                        input_sample,
+                        telemetry_update,
+                    });
+                }
             }
 
-            self.stats.malformed += 1;
+            if self.f1_24_car_damage_compat {
+                let Some(compat_packet) = to_f1_24_car_damage_compat_packet(&patched_packet) else {
+                    self.stats.malformed += 1;
+                    return Some(ProcessedPacket {
+                        packet: packet.to_vec(),
+                        patched: false,
+                        detected_game,
+                        input_sample,
+                        telemetry_update,
+                    });
+                };
+                patched_packet = compat_packet;
+            }
+
+            self.stats.patched += 1;
+            return Some(ProcessedPacket {
+                packet: patched_packet,
+                patched: true,
+                detected_game,
+                input_sample,
+                telemetry_update,
+            });
         }
 
         Some(ProcessedPacket {
@@ -207,7 +241,9 @@ fn parse_telemetry_update(packet: &[u8], packet_id: u8) -> TelemetryUpdate {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::f1::car_damage::{CAR_DAMAGE_PACKET_SIZE, car_damage_offset};
+    use crate::f1::car_damage::{
+        CAR_DAMAGE_PACKET_SIZE, F1_24_CAR_DAMAGE_PACKET_SIZE, car_damage_offset,
+    };
     use crate::f1::car_telemetry::{CAR_TELEMETRY_PACKET_SIZE, car_telemetry_offset};
     use crate::games::resolve_game_profile;
 
@@ -265,6 +301,7 @@ mod tests {
             resolve_game_profile("generic-udp").unwrap(),
             BridgeMode::Passthrough,
             false,
+            false,
         );
         let packet = vec![1_u8, 2, 3];
 
@@ -282,6 +319,7 @@ mod tests {
             resolve_game_profile("f1-25").unwrap(),
             BridgeMode::Passthrough,
             false,
+            false,
         );
 
         assert!(bridge.process(&[1, 2, 3]).is_none());
@@ -294,6 +332,7 @@ mod tests {
             resolve_game_profile("auto").unwrap(),
             BridgeMode::Remap,
             true,
+            false,
         );
 
         let unknown = vec![1_u8, 2, 3];
@@ -307,10 +346,30 @@ mod tests {
     }
 
     #[test]
+    fn auto_profile_applies_f1_compat_after_detection() {
+        let mut bridge = TelemetryBridge::new(
+            resolve_game_profile("auto").unwrap(),
+            BridgeMode::Remap,
+            false,
+            true,
+        );
+
+        let result = bridge.process(&make_f1_car_damage_packet()).unwrap();
+        let header = parse_packet_header(&result.packet).unwrap();
+
+        assert_eq!(result.detected_game.unwrap().id, "f1-25");
+        assert!(result.patched);
+        assert_eq!(header.packet_format, 2024);
+        assert_eq!(header.game_year, 24);
+        assert_eq!(result.packet.len(), F1_24_CAR_DAMAGE_PACKET_SIZE);
+    }
+
+    #[test]
     fn f1_car_telemetry_packets_emit_input_samples() {
         let mut bridge = TelemetryBridge::new(
             resolve_game_profile("f1-25").unwrap(),
             BridgeMode::Passthrough,
+            false,
             false,
         );
 
@@ -331,6 +390,7 @@ mod tests {
             resolve_game_profile("f1-25").unwrap(),
             BridgeMode::Passthrough,
             false,
+            false,
         );
 
         let result = bridge
@@ -339,5 +399,43 @@ mod tests {
 
         assert!(result.input_sample.is_none());
         assert!(result.telemetry_update.is_empty());
+    }
+
+    #[test]
+    fn f1_25_car_damage_can_emit_f1_24_compat_packet() {
+        let mut bridge = TelemetryBridge::new(
+            resolve_game_profile("f1-25").unwrap(),
+            BridgeMode::Remap,
+            false,
+            true,
+        );
+
+        let result = bridge.process(&make_f1_car_damage_packet()).unwrap();
+        let header = parse_packet_header(&result.packet).unwrap();
+
+        assert!(result.patched);
+        assert_eq!(header.packet_format, 2024);
+        assert_eq!(header.game_year, 24);
+        assert_eq!(result.packet.len(), F1_24_CAR_DAMAGE_PACKET_SIZE);
+        assert_eq!(read_raw_wear(&result.packet), [10.0, 20.0, 30.0, 40.0]);
+    }
+
+    #[test]
+    fn f1_25_car_damage_compat_respects_tyre_wear_order_fix() {
+        let mut bridge = TelemetryBridge::new(
+            resolve_game_profile("f1-25").unwrap(),
+            BridgeMode::Remap,
+            true,
+            true,
+        );
+
+        let result = bridge.process(&make_f1_car_damage_packet()).unwrap();
+        let header = parse_packet_header(&result.packet).unwrap();
+
+        assert!(result.patched);
+        assert_eq!(header.packet_format, 2024);
+        assert_eq!(header.game_year, 24);
+        assert_eq!(result.packet.len(), F1_24_CAR_DAMAGE_PACKET_SIZE);
+        assert_eq!(read_raw_wear(&result.packet), [30.0, 40.0, 10.0, 20.0]);
     }
 }

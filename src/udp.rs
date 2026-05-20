@@ -1,4 +1,5 @@
 use std::net::UdpSocket;
+use std::process::Command;
 use std::time::{Duration, Instant};
 
 use crate::analysis::TelemetryAnalyzer;
@@ -15,7 +16,12 @@ pub fn start_udp_bridge(config: BridgeConfig) -> Result<(), String> {
     let sender =
         UdpSocket::bind("0.0.0.0:0").map_err(|error| format!("sender bind failed: {error}"))?;
     let target = format!("{}:{}", config.moza_host, config.moza_port);
-    let mut bridge = TelemetryBridge::new(config.game, config.mode, config.fix_tyre_wear_order);
+    let mut bridge = TelemetryBridge::new(
+        config.game,
+        config.mode,
+        config.fix_tyre_wear_order,
+        config.f1_24_car_damage_compat,
+    );
     let mut input_logger = config
         .input_log
         .as_deref()
@@ -37,7 +43,7 @@ pub fn start_udp_bridge(config: BridgeConfig) -> Result<(), String> {
     let mut buffer = vec![0_u8; UDP_BUFFER_SIZE];
 
     println!(
-        "{}\n{}\nmode={:?}\nfixTyreWearOrder={}",
+        "{}\n{}\nf1_25_compat=on\ndebug={}",
         format_args!(
             "Sim MOZA Bridge listening on {}:{}",
             config.listen_host, config.listen_port
@@ -47,8 +53,7 @@ pub fn start_udp_bridge(config: BridgeConfig) -> Result<(), String> {
         } else {
             format!("forwarding to {target}")
         },
-        config.mode,
-        config.fix_tyre_wear_order
+        config.debug
     );
     println!("game={} ({})", config.game.id, config.game.name);
     if !is_loopback_host(&config.listen_host) {
@@ -67,7 +72,11 @@ pub fn start_udp_bridge(config: BridgeConfig) -> Result<(), String> {
         println!("analysis report enabled: {path}");
     }
     if let Some(port) = config.hud_http_port {
-        println!("HUD: http://{}:{port}", config.hud_host);
+        let hud_url = format!("http://{}:{port}", config.hud_host);
+        println!("HUD: {hud_url}");
+        if let Err(error) = open_browser(&hud_url) {
+            eprintln!("[warning] failed to open HUD in browser: {error}");
+        }
     }
 
     loop {
@@ -86,7 +95,7 @@ pub fn start_udp_bridge(config: BridgeConfig) -> Result<(), String> {
                 detected_game.id, detected_game.name
             );
         }
-        if config.verbose && result.patched {
+        if config.debug && result.patched {
             println!("[patch] packet remapped");
         }
 
@@ -123,7 +132,7 @@ pub fn start_udp_bridge(config: BridgeConfig) -> Result<(), String> {
                 analysis_report = None;
             }
 
-            if config.verbose {
+            if config.debug {
                 println!(
                     "[analysis] lap={} clean={} samples={} recommendations={}",
                     analysis.lap_num,
@@ -141,7 +150,7 @@ pub fn start_udp_bridge(config: BridgeConfig) -> Result<(), String> {
             bridge.mark_forwarded();
         }
 
-        if config.verbose && last_stats.elapsed() >= Duration::from_secs(1) {
+        if config.debug && last_stats.elapsed() >= Duration::from_secs(1) {
             println!(
                 "[stats] received={} forwarded={} patched={} ignored={} malformed={} packets={}",
                 bridge.stats.received,
@@ -165,4 +174,32 @@ fn start_optional_hud(config: &BridgeConfig) -> Result<Option<HudHandle>, String
 
 fn is_loopback_host(host: &str) -> bool {
     matches!(host, "127.0.0.1" | "localhost" | "::1")
+}
+
+fn open_browser(url: &str) -> Result<(), String> {
+    open_browser_command(url)
+        .spawn()
+        .map(|_| ())
+        .map_err(|error| error.to_string())
+}
+
+#[cfg(target_os = "windows")]
+fn open_browser_command(url: &str) -> Command {
+    let mut command = Command::new("cmd");
+    command.args(["/C", "start", "", url]);
+    command
+}
+
+#[cfg(target_os = "macos")]
+fn open_browser_command(url: &str) -> Command {
+    let mut command = Command::new("open");
+    command.arg(url);
+    command
+}
+
+#[cfg(all(unix, not(target_os = "macos")))]
+fn open_browser_command(url: &str) -> Command {
+    let mut command = Command::new("xdg-open");
+    command.arg(url);
+    command
 }

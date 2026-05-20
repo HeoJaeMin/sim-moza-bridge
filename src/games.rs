@@ -5,16 +5,6 @@ pub enum InputKind {
     PluginSharedMemory,
 }
 
-impl InputKind {
-    pub fn as_str(self) -> &'static str {
-        match self {
-            Self::Udp => "udp",
-            Self::SharedMemory => "shared-memory",
-            Self::PluginSharedMemory => "plugin-shared-memory",
-        }
-    }
-}
-
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum ProtocolKind {
     Auto,
@@ -159,23 +149,6 @@ pub fn resolve_game_profile(value: &str) -> Result<GameProfile, String> {
         })
 }
 
-pub fn assert_udp_bridge_supported(profile: GameProfile) -> Result<(), String> {
-    if profile.supports_udp_bridge {
-        return Ok(());
-    }
-
-    let mut parts = vec![
-        format!("{} is not a UDP bridge profile yet.", profile.name),
-        format!("Input type: {}.", profile.input_kind.as_str()),
-    ];
-    parts.extend(profile.notes.iter().map(|note| (*note).to_owned()));
-    parts.push(
-        "Use --game generic-udp only if another tool exports compatible UDP packets for this game."
-            .to_owned(),
-    );
-    Err(parts.join(" "))
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -193,15 +166,5 @@ mod tests {
     fn rejects_unsupported_profile() {
         let message = resolve_game_profile("iracing").unwrap_err();
         assert!(message.contains("Supported game profiles"));
-    }
-
-    #[test]
-    fn guards_non_udp_profiles() {
-        assert!(assert_udp_bridge_supported(resolve_game_profile("auto").unwrap()).is_ok());
-        assert!(assert_udp_bridge_supported(resolve_game_profile("f1-25").unwrap()).is_ok());
-        assert!(assert_udp_bridge_supported(resolve_game_profile("generic-udp").unwrap()).is_ok());
-        assert!(assert_udp_bridge_supported(resolve_game_profile("ace").unwrap()).is_err());
-        assert!(assert_udp_bridge_supported(resolve_game_profile("acr").unwrap()).is_err());
-        assert!(assert_udp_bridge_supported(resolve_game_profile("lmu").unwrap()).is_err());
     }
 }

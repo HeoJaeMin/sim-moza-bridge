@@ -19,7 +19,7 @@
 
 MOZA 표에는 전체 텔레메트리 이름이 144개 있고, 그중 `F1 24` 컬럼에 지원 표시가 있는 키는 109개입니다. F1 25 UDP에는 그보다 훨씬 많은 원본 필드가 있으며, 여러 값은 단위 변환, 열거값 라벨 변환, 휠 배열 순서 보정, 플레이어 차량 선택, 또는 여러 패킷 조합이 필요합니다. 대표적으로 차간 간격은 F1 25 UDP에 `m_deltaToCarInFront*`, `m_deltaToRaceLeader*`로 존재하지만 MOZA F1 계열 키로는 지원 표시가 없습니다.
 
-현재 브리지가 MOZA로 전달되는 패킷을 실제로 수정하는 값은 `PacketCarDamageData.m_tyresWear[4]`뿐입니다. 나머지는 로컬 HUD, 로깅, 분석에서 읽거나 파생할 수 있지만 Pit House에 새 `v1/gameData/...` 키를 등록하지는 못합니다.
+현재 브리지가 MOZA로 전달되는 패킷에서 실제로 수정하는 값은 `PacketCarDamageData.m_tyresWear[4]`이며, F1 25 CarDamage 패킷은 기본적으로 F1 24 호환 레이아웃으로 줄여 전달합니다. 나머지는 로컬 HUD, 로깅, 분석에서 읽거나 파생할 수 있지만 Pit House에 새 `v1/gameData/...` 키를 등록하지는 못합니다.
 
 ## F1 원본 휠 배열 규칙
 
@@ -47,7 +47,8 @@ F1 25의 모든 휠 배열은 같은 인덱스 순서를 씁니다.
 | `TyreWearRL` | `m_carDamageData[playerCarIndex].m_tyresWear[0]` |
 | `TyreWearRR` | `m_carDamageData[playerCarIndex].m_tyresWear[1]` |
 
-현재 `--fix-tyre-wear-order`는 Pit House가 배열을 이름 기준이 아니라 앞에서부터 `FL, FR, RL, RR`처럼 읽는 경우를 보정하기 위한 선택 기능입니다. Pit House가 이미 F1 사양대로 `TyreWearFL = m_tyresWear[2]`로 읽고 있다면 이 옵션을 켜면 오히려 값이 틀어집니다.
+브리지는 기본 실행에서 F1 25 CarDamage 패킷을 F1 24 호환 레이아웃으로 변환합니다. Pit House가 이미 F1 사양대로 `TyreWearFL = m_tyresWear[2]`로 읽는다는 전제에 맞춰, 휠 순서 자체는 원본 F1 배열을 유지합니다.
+값이 `100`에서 움직이지 않는 경우는 순서 문제가 아니라 Pit House가 F1 25 CarDamage 패킷을 읽지 못하는 호환성 문제일 가능성이 큽니다.
 
 이 인덱스 규칙은 타이어 웨어만의 문제가 아닙니다. F1 25에서 아래 휠 배열들도 같은 `0=RL, 1=RR, 2=FL, 3=FR` 순서를 씁니다.
 
@@ -154,7 +155,7 @@ F1 25의 모든 휠 배열은 같은 인덱스 순서를 씁니다.
 
 | 표시/분석 지표 | F1 25 원본 필드 | MOZA F1 키 가능성 | 브리지 처리 방향 |
 | --- | --- | --- | --- |
-| 타이어 웨어 | `PacketCarDamageData.m_tyresWear[4]` | `TyreWearFL/FR/RL/RR` | 휠 인덱스 매핑 필요. 현재 패킷 단위 재매핑 구현됨 |
+| 타이어 웨어 | `PacketCarDamageData.m_tyresWear[4]` | `TyreWearFL/FR/RL/RR` | 휠 인덱스 매핑 필요. 패킷 단위 순서 보정과 F1 24 호환 CarDamage 변환 구현됨 |
 | 타이어 손상 | `m_tyresDamage[4]` | 직접 키 없음 | 로컬 HUD/리포트용 |
 | 브레이크 손상 | `m_brakesDamage[4]` | 직접 키 없음 | 로컬 HUD/리포트용 |
 | 타이어 블리스터 | `m_tyreBlisters[4]` | 직접 키 없음 | F1 25 신규/세부 손상 지표. 로컬 HUD/리포트용 |
@@ -267,7 +268,7 @@ F1 25의 `Your Telemetry` 설정이 `Restricted`인 경우, 다른 플레이어 
 | 타이어/브레이크 | `BrakeTempFL&F`, `BrakeTempFR&F`, `BrakeTempRL&F`, `BrakeTempRR&F` | 브레이크 온도 | 화씨 표시 키로 보면 단위 변환 |
 | 타이어/브레이크 | `TrackTemp`, `AirTemp` | `PacketSessionData.m_trackTemperature`, `m_airTemperature` | 직접 대응 |
 | 타이어/브레이크 | `TrackTemp&F`, `AirTemp&F` | 트랙/공기 온도 | 화씨 표시 키로 보면 단위 변환 |
-| 손상/마모 | `TyreWearFL`, `TyreWearFR`, `TyreWearRL`, `TyreWearRR` | `PacketCarDamageData.m_tyresWear[4]` | 휠 순서 보정 필요. 현재 패킷 단위 재매핑 구현됨 |
+| 손상/마모 | `TyreWearFL`, `TyreWearFR`, `TyreWearRL`, `TyreWearRR` | `PacketCarDamageData.m_tyresWear[4]` | 휠 순서 보정 필요. 패킷 단위 순서 보정과 F1 24 호환 CarDamage 변환 구현됨 |
 | 손상/마모 | `WingWearFL`, `WingWearFR` | `PacketCarDamageData.m_frontLeftWingDamage`, `m_frontRightWingDamage` | 직접 대응 |
 | 손상/마모 | `EngineWear` | `PacketCarDamageData.m_engineDamage` 또는 부품 마모 필드 | 단일 값 선택 정책 필요 |
 | 손상/마모 | `GearBoxWear` | `PacketCarDamageData.m_gearBoxDamage` | 직접 대응 |

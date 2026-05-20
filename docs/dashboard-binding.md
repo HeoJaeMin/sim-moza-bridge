@@ -20,6 +20,7 @@ F1 25는 원본 바이너리 UDP 패킷을 보냅니다. Pit House는 이 패킷
 
 - F1 25 tyre wear는 `m_carDamageData[playerCarIndex].m_tyresWear[4]`이며 순서는 `0=RL`, `1=RR`, `2=FL`, `3=FR`입니다.
 - Pit House가 차량 손상 패킷에서 타이어 웨어 값을 읽는다면, `m_tyresWear[4]` 변경은 `v1/gameData/TyreWearFL` 계열 키에 영향을 줄 수 있습니다.
+- `TyreWear*` 값이 계속 `100`이면 순서 보정보다 F1 25 CarDamage 레이아웃 호환 문제일 가능성이 큽니다. 현재 브리지는 CarDamage 패킷만 F1 24 호환 레이아웃으로 자동 변환합니다.
 - UDP 패킷 전달만으로 새 `v1/gameData/BehindGap` 키를 만드는 것은 기대하면 안 됩니다.
 - 뒤차와의 차이는 Pit House가 이미 노출하는 기존 필드에 억지로 넣거나, 이 브리지를 직접 읽는 별도 대시보드에서 렌더링해야 합니다.
 

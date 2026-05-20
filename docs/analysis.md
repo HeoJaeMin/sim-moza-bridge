@@ -16,9 +16,7 @@
 
 ## 출력
 
-```bash
-cargo run -- --corner-log corners.csv --analysis-report analysis.md
-```
+현재 일반 실행 CLI는 F1 25 -> MOZA 전달에 집중하므로 분석 출력 옵션은 노출하지 않습니다. 아래 내용은 코드에 남아 있는 개발용 분석 경로 설명입니다.
 
 `corners.csv`는 완료된 랩마다 구간별 행을 누적합니다.
 

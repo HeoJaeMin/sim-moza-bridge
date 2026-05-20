@@ -1,4 +1,5 @@
 pub const F1_25_PACKET_FORMAT: u16 = 2025;
+pub const F1_24_PACKET_FORMAT: u16 = 2024;
 pub const PACKET_HEADER_SIZE: usize = 29;
 pub const MAX_CARS: usize = 22;
 
