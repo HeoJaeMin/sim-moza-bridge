@@ -29,6 +29,19 @@ F1 25의 텔레메트리 설정에서 다음처럼 설정합니다.
 
 MOZA Pit House는 F1 25 텔레메트리 입력으로 보통 `22025` 포트를 기대하므로, 브리지는 기본적으로 `20777`에서 받아 `22025`로 전달합니다.
 
+## LMU / ACE 설정
+
+LMU와 ACE는 F1 25처럼 게임 안 UDP 포트만 맞추는 방식으로 이 브리지에 직접 연결되지 않습니다. Windows 게임 PC에서 각 게임을 실행한 뒤 해당 adapter를 선택합니다.
+
+```bash
+cargo run -- --game lmu
+cargo run -- --game ace
+```
+
+- LMU adapter는 `LMU_Data` 공유 메모리를 읽고 HUD에 속도, RPM, 기어, 입력, 타이어/브레이크, 연료, 앞/뒤 차 gap을 표시합니다.
+- ACE adapter는 `Local\acevo_pmf_physics` 공유 메모리를 읽고 HUD에 기본 주행 텔레메트리를 표시합니다.
+- 공유 메모리가 아직 없으면 Windows에서는 adapter가 켜진 상태로 게임 세션을 기다립니다.
+
 ## 실행
 
 기본 실행:
@@ -80,6 +93,7 @@ HUD에는 속도, 기어, RPM, REV LED, 입력 추적, 타이어/브레이크 �
 
 | 옵션 | 기본값 | 설명 |
 | --- | --- | --- |
+| `--game` | `auto` | `auto`, `f1-25`, `generic-udp`, `lmu`, `ace`, `acr` 중 선택 |
 | `--listen` | `20777` | F1 25 UDP를 받는 포트 |
 | `--moza-port` | `22025` | MOZA Pit House로 전달할 포트 |
 | `--debug` | `false` | 패치 로그와 초당 통계 출력 |
