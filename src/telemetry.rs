@@ -134,6 +134,12 @@ pub struct LapSample {
 }
 
 #[derive(Clone, Debug, PartialEq)]
+pub struct MarshalZoneSample {
+    pub start: f32,
+    pub flag: i8,
+}
+
+#[derive(Clone, Debug, PartialEq)]
 pub struct SessionSample {
     pub session_time: f32,
     pub frame_identifier: u32,
@@ -144,6 +150,7 @@ pub struct SessionSample {
     pub track_temp_c: i8,
     pub air_temp_c: i8,
     pub session_time_left_s: u16,
+    pub marshal_zones: Vec<MarshalZoneSample>,
 }
 
 #[derive(Clone, Debug, PartialEq)]

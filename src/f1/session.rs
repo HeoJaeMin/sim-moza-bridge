@@ -1,8 +1,13 @@
 use super::constants::PACKET_HEADER_SIZE;
 use super::header::parse_packet_header;
-use crate::telemetry::SessionSample;
+use crate::telemetry::{MarshalZoneSample, SessionSample};
 
-pub const SESSION_MIN_PACKET_SIZE: usize = PACKET_HEADER_SIZE + 11;
+const MAX_MARSHAL_ZONES: usize = 21;
+const NUM_MARSHAL_ZONES_OFFSET: usize = PACKET_HEADER_SIZE + 18;
+const MARSHAL_ZONES_OFFSET: usize = PACKET_HEADER_SIZE + 19;
+const MARSHAL_ZONE_SIZE: usize = 5;
+pub const SESSION_MIN_PACKET_SIZE: usize =
+    MARSHAL_ZONES_OFFSET + MAX_MARSHAL_ZONES * MARSHAL_ZONE_SIZE;
 
 fn read_u16_le(packet: &[u8], offset: usize) -> u16 {
     u16::from_le_bytes(
@@ -10,6 +15,27 @@ fn read_u16_le(packet: &[u8], offset: usize) -> u16 {
             .try_into()
             .expect("valid u16 offset"),
     )
+}
+
+fn read_f32_le(packet: &[u8], offset: usize) -> f32 {
+    f32::from_le_bytes(
+        packet[offset..offset + 4]
+            .try_into()
+            .expect("valid f32 offset"),
+    )
+}
+
+fn read_marshal_zones(packet: &[u8]) -> Vec<MarshalZoneSample> {
+    let count = (packet[NUM_MARSHAL_ZONES_OFFSET] as usize).min(MAX_MARSHAL_ZONES);
+    (0..count)
+        .map(|index| {
+            let base = MARSHAL_ZONES_OFFSET + index * MARSHAL_ZONE_SIZE;
+            MarshalZoneSample {
+                start: read_f32_le(packet, base),
+                flag: packet[base + 4] as i8,
+            }
+        })
+        .collect()
 }
 
 pub fn parse_session_sample(packet: &[u8]) -> Result<SessionSample, String> {
@@ -30,6 +56,7 @@ pub fn parse_session_sample(packet: &[u8]) -> Result<SessionSample, String> {
         track_temp_c: packet[PACKET_HEADER_SIZE + 1] as i8,
         air_temp_c: packet[PACKET_HEADER_SIZE + 2] as i8,
         session_time_left_s: read_u16_le(packet, PACKET_HEADER_SIZE + 9),
+        marshal_zones: read_marshal_zones(packet),
     })
 }
 
@@ -55,6 +82,13 @@ mod tests {
         packet[PACKET_HEADER_SIZE + 7] = 7;
         packet[PACKET_HEADER_SIZE + 9..PACKET_HEADER_SIZE + 11]
             .copy_from_slice(&1200_u16.to_le_bytes());
+        packet[NUM_MARSHAL_ZONES_OFFSET] = 2;
+        packet[MARSHAL_ZONES_OFFSET..MARSHAL_ZONES_OFFSET + 4]
+            .copy_from_slice(&0.25_f32.to_le_bytes());
+        packet[MARSHAL_ZONES_OFFSET + 4] = 1;
+        let second_zone = MARSHAL_ZONES_OFFSET + MARSHAL_ZONE_SIZE;
+        packet[second_zone..second_zone + 4].copy_from_slice(&0.5_f32.to_le_bytes());
+        packet[second_zone + 4] = 3;
 
         assert_eq!(
             parse_session_sample(&packet).unwrap(),
@@ -68,6 +102,16 @@ mod tests {
                 track_temp_c: 31,
                 air_temp_c: 22,
                 session_time_left_s: 1200,
+                marshal_zones: vec![
+                    MarshalZoneSample {
+                        start: 0.25,
+                        flag: 1,
+                    },
+                    MarshalZoneSample {
+                        start: 0.5,
+                        flag: 3,
+                    },
+                ],
             }
         );
     }
