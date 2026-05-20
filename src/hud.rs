@@ -561,15 +561,20 @@ const HUD_HTML: &str = r#"<!doctype html>
     .mode-1080x960 .rpmReadout b { font-size: 25px; }
     .mode-1080x960 .rpmReadout span { font-size: 17px; }
     .mode-1080x960 .trace { height: 102px; }
-    .mode-1080x960 .grid { grid-template-columns: .8fr 1.08fr .96fr; }
+    .mode-1080x960 .grid { grid-template-columns: .64fr 1fr 1.22fr; }
     .mode-1080x960 .panel { padding: 8px; gap: 8px; }
     .mode-1080x960 .panel h2 { font-size: 11px; }
-    .mode-1080x960 .inputRows, .mode-1080x960 .row { gap: 5px; }
+    .mode-1080x960 .inputPanel { padding: 6px; gap: 6px; }
+    .mode-1080x960 .inputPanel .inputRows, .mode-1080x960 .inputPanel .row { gap: 4px; }
     .mode-1080x960 .rowHead b { font-size: 17px; }
     .mode-1080x960 .track, .mode-1080x960 .steerWrap { height: 20px; }
+    .mode-1080x960 .inputPanel .rowHead b { font-size: 14px; }
+    .mode-1080x960 .inputPanel .track, .mode-1080x960 .inputPanel .steerWrap { height: 16px; }
     .mode-1080x960 .twoCols, .mode-1080x960 .wheels { gap: 6px; }
     .mode-1080x960 .kv { gap: 6px; padding-top: 5px; }
     .mode-1080x960 .kv b { font-size: 13px; }
+    .mode-1080x960 .gapMetric { padding-top: 7px; }
+    .mode-1080x960 .gapMetric b { font-size: 19px; }
     .mode-1080x960 .wheel { padding: 6px; gap: 5px; }
     .mode-1080x960 .wheelTop b { font-size: 16px; }
     .mode-1080x960 .mini { gap: 4px; }
@@ -606,7 +611,7 @@ const HUD_HTML: &str = r#"<!doctype html>
   </section>
 
   <section class="grid">
-    <div class="panel">
+    <div class="panel inputPanel">
       <h2>Inputs</h2>
       <div class="inputRows">
         <div class="row">
@@ -692,16 +697,16 @@ const HUD_HTML: &str = r#"<!doctype html>
       </div>
     </div>
 
-    <div class="panel">
+    <div class="panel racePanel">
       <h2>Race & Systems</h2>
       <div class="twoCols">
         <div class="kv"><span class="smallLabel">CURRENT</span><b id="currentLap">--:--.---</b></div>
         <div class="kv"><span class="smallLabel">LAST</span><b id="lastLap">--:--.---</b></div>
         <div class="kv"><span class="smallLabel">SECTOR 1</span><b id="sector1">--:--.---</b></div>
         <div class="kv"><span class="smallLabel">SECTOR 2</span><b id="sector2">--:--.---</b></div>
-        <div class="kv"><span class="smallLabel">GAP AHEAD</span><b id="gapFront">--</b></div>
-        <div class="kv"><span class="smallLabel">GAP BEHIND</span><b id="gapBehind">--</b></div>
-        <div class="kv"><span class="smallLabel">GAP LEADER</span><b id="gapLeader">--</b></div>
+        <div class="kv gapMetric"><span class="smallLabel">GAP AHEAD</span><b id="gapFront">--</b></div>
+        <div class="kv gapMetric"><span class="smallLabel">GAP BEHIND</span><b id="gapBehind">--</b></div>
+        <div class="kv gapMetric"><span class="smallLabel">GAP LEADER</span><b id="gapLeader">--</b></div>
         <div class="kv"><span class="smallLabel">FUEL LAPS</span><b id="fuelLaps">--</b></div>
         <div class="kv"><span class="smallLabel">BRAKE BIAS</span><b id="brakeBias">--%</b></div>
       </div>
