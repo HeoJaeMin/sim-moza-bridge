@@ -505,6 +505,79 @@ const HUD_HTML: &str = r#"<!doctype html>
       .rpmReadout b { font-size: 28px; }
       .damageBars { grid-template-columns: repeat(3, 1fr); }
     }
+    main.mode-1920x1080 {
+      width: min(1888px, calc(100vw - 32px));
+      min-height: calc(100vh - 20px);
+      grid-template-rows: auto 300px minmax(0, 1fr);
+      padding: 10px 0;
+    }
+    .mode-1920x1080 .hero { grid-template-columns: .7fr .8fr 1.35fr; }
+    .mode-1920x1080 .grid { grid-template-columns: .9fr 1.25fr 1fr; }
+    .mode-1920x1080 .speed, .mode-1920x1080 .gear, .mode-1920x1080 .rpmPanel { min-height: 300px; }
+    .mode-1920x1080 .panel { padding: 10px; gap: 10px; }
+    .mode-1920x1080 .trace { height: 162px; }
+    .mode-1920x1080 .damageBars { min-height: 118px; }
+    .mode-1920x1080 .damageTrack { height: 72px; }
+    .mode-1920x1080 .wheel { padding: 8px; gap: 7px; }
+    .mode-1920x1080 .mini b { font-size: 15px; }
+
+    main.mode-1080x1920 {
+      width: min(1048px, calc(100vw - 32px));
+      padding: 16px 0 20px;
+    }
+    .mode-1080x1920 .barTop { grid-template-columns: repeat(3, 1fr); }
+    .mode-1080x1920 .statusLine { grid-column: 1 / -1; }
+    .mode-1080x1920 .hero { grid-template-columns: 1fr 1fr; }
+    .mode-1080x1920 .rpmPanel { grid-column: 1 / -1; min-height: 280px; }
+    .mode-1080x1920 .speed, .mode-1080x1920 .gear { min-height: 240px; }
+    .mode-1080x1920 .speed b { font-size: 132px; }
+    .mode-1080x1920 .gear b { font-size: 184px; }
+    .mode-1080x1920 .grid { grid-template-columns: 1fr; }
+    .mode-1080x1920 .trace { height: 220px; }
+    .mode-1080x1920 .wheels { grid-template-columns: repeat(2, 1fr); }
+
+    main.mode-1080x960 {
+      width: min(1060px, calc(100vw - 18px));
+      min-height: calc(100vh - 12px);
+      padding: 6px 0;
+      gap: 8px;
+      grid-template-rows: auto 214px minmax(0, 1fr);
+    }
+    .mode-1080x960 .barTop, .mode-1080x960 .hero, .mode-1080x960 .grid { gap: 8px; }
+    .mode-1080x960 .barTop { grid-template-columns: 1.1fr repeat(5, minmax(72px, .5fr)); }
+    .mode-1080x960 .statusLine { grid-column: auto; gap: 7px; padding: 8px; }
+    .mode-1080x960 .brand { font-size: 13px; }
+    .mode-1080x960 .notice { display: none; }
+    .mode-1080x960 .metric { padding: 8px; }
+    .mode-1080x960 .metric b { font-size: 18px; }
+    .mode-1080x960 .metric strong, .mode-1080x960 .label, .mode-1080x960 .smallLabel { font-size: 10px; }
+    .mode-1080x960 .hero { grid-template-columns: .62fr .62fr 1.35fr; }
+    .mode-1080x960 .speed, .mode-1080x960 .gear, .mode-1080x960 .rpmPanel { min-height: 214px; }
+    .mode-1080x960 .speed { padding: 10px; }
+    .mode-1080x960 .speed b { font-size: 82px; }
+    .mode-1080x960 .gear b { font-size: 126px; }
+    .mode-1080x960 .rpmPanel { padding: 10px; gap: 9px; }
+    .mode-1080x960 .led { height: 14px; }
+    .mode-1080x960 .rpmReadout b { font-size: 25px; }
+    .mode-1080x960 .rpmReadout span { font-size: 17px; }
+    .mode-1080x960 .trace { height: 102px; }
+    .mode-1080x960 .grid { grid-template-columns: .8fr 1.08fr .96fr; }
+    .mode-1080x960 .panel { padding: 8px; gap: 8px; }
+    .mode-1080x960 .panel h2 { font-size: 11px; }
+    .mode-1080x960 .inputRows, .mode-1080x960 .row { gap: 5px; }
+    .mode-1080x960 .rowHead b { font-size: 17px; }
+    .mode-1080x960 .track, .mode-1080x960 .steerWrap { height: 20px; }
+    .mode-1080x960 .twoCols, .mode-1080x960 .wheels { gap: 6px; }
+    .mode-1080x960 .kv { gap: 6px; padding-top: 5px; }
+    .mode-1080x960 .kv b { font-size: 13px; }
+    .mode-1080x960 .wheel { padding: 6px; gap: 5px; }
+    .mode-1080x960 .wheelTop b { font-size: 16px; }
+    .mode-1080x960 .mini { gap: 4px; }
+    .mode-1080x960 .mini div { padding-top: 4px; }
+    .mode-1080x960 .mini b { font-size: 12px; }
+    .mode-1080x960 .damageBars { gap: 4px; min-height: 82px; }
+    .mode-1080x960 .damageTrack { height: 46px; }
+    .mode-1080x960 .damageBar { gap: 3px; font-size: 9px; }
   </style>
 </head>
 <body>
@@ -687,6 +760,23 @@ function gap(value) {
   if (value === null || value === undefined) return '--';
   return '+' + (value / 1000).toFixed(3);
 }
+function updateLayoutMode() {
+  const app = document.getElementById('app');
+  const width = window.innerWidth;
+  const height = window.innerHeight;
+  const ratio = width / Math.max(1, height);
+  app.classList.remove('mode-1920x1080', 'mode-1080x1920', 'mode-1080x960');
+  if (ratio >= 1.55) {
+    app.classList.add('mode-1920x1080');
+  } else if (ratio <= 0.72) {
+    app.classList.add('mode-1080x1920');
+  } else if (width >= 900 && height <= 1120) {
+    app.classList.add('mode-1080x960');
+  }
+}
+window.addEventListener('resize', updateLayoutMode);
+window.addEventListener('orientationchange', updateLayoutMode);
+updateLayoutMode();
 
 const leds = document.getElementById('leds');
 for (let index = 0; index < 15; index += 1) {
