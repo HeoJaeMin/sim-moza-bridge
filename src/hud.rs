@@ -487,6 +487,7 @@ const HUD_HTML: &str = r#"<!doctype html>
     .damageTrack { height: 94px; border: 1px solid var(--line); background: #0f100c; display: flex; align-items: end; overflow: hidden; }
     .damageFill { width: 100%; height: 0%; background: var(--red); transition: height 120ms linear; }
     .notice { color: var(--muted); font-size: 12px; }
+    .coreOnly { display: none; }
     .stale .panel, .stale .metric, .stale .speed, .stale .gear, .stale .rpmPanel { opacity: .72; }
     @media (max-width: 1100px) {
       .barTop { grid-template-columns: repeat(3, 1fr); }
@@ -522,67 +523,67 @@ const HUD_HTML: &str = r#"<!doctype html>
     .mode-1920x1080 .mini b { font-size: 15px; }
 
     main.mode-1080x1920 {
-      width: min(1048px, calc(100vw - 32px));
-      padding: 16px 0 20px;
+      width: min(1056px, calc(100vw - 20px));
+      height: calc(100vh - 12px);
+      padding: 6px 0;
+      gap: 8px;
+      grid-template-rows: auto 300px minmax(0, 1fr);
     }
-    .mode-1080x1920 .barTop { grid-template-columns: repeat(3, 1fr); }
-    .mode-1080x1920 .statusLine { grid-column: 1 / -1; }
-    .mode-1080x1920 .hero { grid-template-columns: 1fr 1fr; }
-    .mode-1080x1920 .rpmPanel { grid-column: 1 / -1; min-height: 280px; }
-    .mode-1080x1920 .speed, .mode-1080x1920 .gear { min-height: 240px; }
-    .mode-1080x1920 .speed b { font-size: 132px; }
-    .mode-1080x1920 .gear b { font-size: 184px; }
-    .mode-1080x1920 .grid { grid-template-columns: 1fr; }
-    .mode-1080x1920 .trace { height: 220px; }
-    .mode-1080x1920 .wheels { grid-template-columns: repeat(2, 1fr); }
+    .mode-1080x1920 .barTop, .mode-1080x1920 .hero, .mode-1080x1920 .grid { gap: 8px; }
+    .mode-1080x1920 .barTop { grid-template-columns: 1.2fr 1fr 1fr; }
+    .mode-1080x1920 .statusLine { grid-column: auto; padding: 8px; }
+    .mode-1080x1920 .sessionMetric, .mode-1080x1920 .trackMetric, .mode-1080x1920 .airMetric, .mode-1080x1920 .inputPanel { display: none; }
+    .mode-1080x1920 .metric { padding: 8px; }
+    .mode-1080x1920 .metric b { font-size: 22px; }
+    .mode-1080x1920 .hero { grid-template-columns: .65fr .65fr 1.35fr; }
+    .mode-1080x1920 .rpmPanel { grid-column: auto; min-height: 300px; padding: 12px; gap: 10px; }
+    .mode-1080x1920 .speed, .mode-1080x1920 .gear { min-height: 300px; }
+    .mode-1080x1920 .speed b { font-size: 112px; }
+    .mode-1080x1920 .gear b { font-size: 160px; }
+    .mode-1080x1920 .trace { height: 140px; }
+    .mode-1080x1920 .grid { grid-template-columns: 1fr 1fr; min-height: 0; }
+    .mode-1080x1920 .panel { padding: 10px; gap: 10px; min-height: 0; }
+    .mode-1080x1920 .wheels { grid-template-columns: repeat(2, 1fr); gap: 8px; }
+    .mode-1080x1920 .wheel { padding: 8px; gap: 6px; }
+    .mode-1080x1920 .mini { gap: 5px; }
+    .mode-1080x1920 .mini b { font-size: 14px; }
+    .mode-1080x1920 .damageBars { min-height: 108px; }
+    .mode-1080x1920 .damageTrack { height: 68px; }
 
     main.mode-1080x960 {
       width: min(1060px, calc(100vw - 18px));
-      min-height: calc(100vh - 12px);
-      padding: 6px 0;
+      height: calc(100vh - 8px);
+      padding: 4px 0;
       gap: 8px;
-      grid-template-rows: auto 214px minmax(0, 1fr);
+      grid-template-rows: 50px 300px minmax(0, 1fr);
     }
     .mode-1080x960 .barTop, .mode-1080x960 .hero, .mode-1080x960 .grid { gap: 8px; }
-    .mode-1080x960 .barTop { grid-template-columns: 1.1fr repeat(5, minmax(72px, .5fr)); }
-    .mode-1080x960 .statusLine { grid-column: auto; gap: 7px; padding: 8px; }
-    .mode-1080x960 .brand { font-size: 13px; }
-    .mode-1080x960 .notice { display: none; }
-    .mode-1080x960 .metric { padding: 8px; }
-    .mode-1080x960 .metric b { font-size: 18px; }
-    .mode-1080x960 .metric strong, .mode-1080x960 .label, .mode-1080x960 .smallLabel { font-size: 10px; }
-    .mode-1080x960 .hero { grid-template-columns: .62fr .62fr 1.35fr; }
-    .mode-1080x960 .speed, .mode-1080x960 .gear, .mode-1080x960 .rpmPanel { min-height: 214px; }
-    .mode-1080x960 .speed { padding: 10px; }
-    .mode-1080x960 .speed b { font-size: 82px; }
-    .mode-1080x960 .gear b { font-size: 126px; }
-    .mode-1080x960 .rpmPanel { padding: 10px; gap: 9px; }
-    .mode-1080x960 .led { height: 14px; }
-    .mode-1080x960 .rpmReadout b { font-size: 25px; }
-    .mode-1080x960 .rpmReadout span { font-size: 17px; }
-    .mode-1080x960 .trace { height: 102px; }
-    .mode-1080x960 .grid { grid-template-columns: .64fr 1fr 1.22fr; }
-    .mode-1080x960 .panel { padding: 8px; gap: 8px; }
-    .mode-1080x960 .panel h2 { font-size: 11px; }
-    .mode-1080x960 .inputPanel { padding: 6px; gap: 6px; }
-    .mode-1080x960 .inputPanel .inputRows, .mode-1080x960 .inputPanel .row { gap: 4px; }
-    .mode-1080x960 .rowHead b { font-size: 17px; }
-    .mode-1080x960 .track, .mode-1080x960 .steerWrap { height: 20px; }
-    .mode-1080x960 .inputPanel .rowHead b { font-size: 14px; }
-    .mode-1080x960 .inputPanel .track, .mode-1080x960 .inputPanel .steerWrap { height: 16px; }
-    .mode-1080x960 .twoCols, .mode-1080x960 .wheels { gap: 6px; }
-    .mode-1080x960 .kv { gap: 6px; padding-top: 5px; }
-    .mode-1080x960 .kv b { font-size: 13px; }
-    .mode-1080x960 .gapMetric { padding-top: 7px; }
-    .mode-1080x960 .gapMetric b { font-size: 19px; }
-    .mode-1080x960 .wheel { padding: 6px; gap: 5px; }
-    .mode-1080x960 .wheelTop b { font-size: 16px; }
-    .mode-1080x960 .mini { gap: 4px; }
-    .mode-1080x960 .mini div { padding-top: 4px; }
-    .mode-1080x960 .mini b { font-size: 12px; }
-    .mode-1080x960 .damageBars { gap: 4px; min-height: 82px; }
-    .mode-1080x960 .damageTrack { height: 46px; }
-    .mode-1080x960 .damageBar { gap: 3px; font-size: 9px; }
+    .mode-1080x960 .barTop { grid-template-columns: 1fr; }
+    .mode-1080x960 .statusLine, .mode-1080x960 .sessionMetric, .mode-1080x960 .positionMetric, .mode-1080x960 .trackMetric, .mode-1080x960 .airMetric, .mode-1080x960 .inputPanel { display: none; }
+    .mode-1080x960 .metric { padding: 8px 14px; }
+    .mode-1080x960 .metric strong, .mode-1080x960 .label, .mode-1080x960 .smallLabel { font-size: 11px; }
+    .mode-1080x960 .metric b { font-size: 28px; }
+    .mode-1080x960 .hero { grid-template-columns: .85fr 1.45fr; min-height: 0; }
+    .mode-1080x960 .gear, .mode-1080x960 .leds, .mode-1080x960 .rpmReadout { display: none; }
+    .mode-1080x960 .speed, .mode-1080x960 .rpmPanel { min-height: 300px; }
+    .mode-1080x960 .speed { padding: 14px; }
+    .mode-1080x960 .speed b { font-size: 116px; }
+    .mode-1080x960 .rpmPanel { padding: 10px; }
+    .mode-1080x960 .trace { height: 278px; }
+    .mode-1080x960 .grid { grid-template-columns: .88fr 1.12fr; min-height: 0; }
+    .mode-1080x960 .panel { padding: 10px; gap: 10px; min-height: 0; overflow: hidden; }
+    .mode-1080x960 .panel h2 { font-size: 12px; }
+    .mode-1080x960 .twoCols, .mode-1080x960 .wheels { gap: 8px; }
+    .mode-1080x960 .tyrePanel .track, .mode-1080x960 .tyrePanel .mini, .mode-1080x960 .secondaryMetric, .mode-1080x960 .secondaryGroup, .mode-1080x960 .fuelRow, .mode-1080x960 .damageBars { display: none; }
+    .mode-1080x960 .wheel { padding: 10px; gap: 4px; }
+    .mode-1080x960 .wheelTop b { font-size: 34px; }
+    .mode-1080x960 .kv { gap: 8px; padding-top: 8px; }
+    .mode-1080x960 .lapDetail b, .mode-1080x960 .gapMetric b, .mode-1080x960 .coreOnly b { font-size: 25px; }
+    .mode-1080x960 .gapMetric { padding-top: 10px; }
+    .mode-1080x960 .coreOnly { display: grid; }
+    .mode-1080x960 .ersRow { gap: 7px; }
+    .mode-1080x960 .ersRow .rowHead b { font-size: 25px; }
+    .mode-1080x960 .track { height: 24px; }
   </style>
 </head>
 <body>
@@ -593,11 +594,11 @@ const HUD_HTML: &str = r#"<!doctype html>
       <span class="pill warn" id="statePill">WAITING</span>
       <span class="notice" id="stateText">NO TELEMETRY</span>
     </div>
-    <div class="metric"><strong>SESSION</strong><b id="sessionLeft">--:--</b></div>
-    <div class="metric"><strong>LAP</strong><b id="lapCount">--/--</b></div>
-    <div class="metric"><strong>POSITION</strong><b id="position">P--</b></div>
-    <div class="metric"><strong>TRACK</strong><b id="trackTemp">-- C</b></div>
-    <div class="metric"><strong>AIR</strong><b id="airTemp">-- C</b></div>
+    <div class="metric sessionMetric"><strong>SESSION</strong><b id="sessionLeft">--:--</b></div>
+    <div class="metric lapMetric"><strong>LAP</strong><b id="lapCount">--/--</b></div>
+    <div class="metric positionMetric"><strong>POSITION</strong><b id="position">P--</b></div>
+    <div class="metric trackMetric"><strong>TRACK</strong><b id="trackTemp">-- C</b></div>
+    <div class="metric airMetric"><strong>AIR</strong><b id="airTemp">-- C</b></div>
   </section>
 
   <section class="hero">
@@ -643,7 +644,7 @@ const HUD_HTML: &str = r#"<!doctype html>
       </div>
     </div>
 
-    <div class="panel">
+    <div class="panel tyrePanel">
       <h2>Tyres & Brakes</h2>
       <div class="wheels">
         <div class="wheel" data-corner="fl">
@@ -700,25 +701,26 @@ const HUD_HTML: &str = r#"<!doctype html>
     <div class="panel racePanel">
       <h2>Race & Systems</h2>
       <div class="twoCols">
-        <div class="kv"><span class="smallLabel">CURRENT</span><b id="currentLap">--:--.---</b></div>
-        <div class="kv"><span class="smallLabel">LAST</span><b id="lastLap">--:--.---</b></div>
-        <div class="kv"><span class="smallLabel">SECTOR 1</span><b id="sector1">--:--.---</b></div>
-        <div class="kv"><span class="smallLabel">SECTOR 2</span><b id="sector2">--:--.---</b></div>
+        <div class="kv lapDetail"><span class="smallLabel">CURRENT</span><b id="currentLap">--:--.---</b></div>
+        <div class="kv lapDetail"><span class="smallLabel">LAST</span><b id="lastLap">--:--.---</b></div>
+        <div class="kv secondaryMetric"><span class="smallLabel">SECTOR 1</span><b id="sector1">--:--.---</b></div>
+        <div class="kv secondaryMetric"><span class="smallLabel">SECTOR 2</span><b id="sector2">--:--.---</b></div>
         <div class="kv gapMetric"><span class="smallLabel">GAP AHEAD</span><b id="gapFront">--</b></div>
         <div class="kv gapMetric"><span class="smallLabel">GAP BEHIND</span><b id="gapBehind">--</b></div>
         <div class="kv gapMetric"><span class="smallLabel">GAP LEADER</span><b id="gapLeader">--</b></div>
-        <div class="kv"><span class="smallLabel">FUEL LAPS</span><b id="fuelLaps">--</b></div>
-        <div class="kv"><span class="smallLabel">BRAKE BIAS</span><b id="brakeBias">--%</b></div>
+        <div class="kv coreOnly"><span class="smallLabel">DRS</span><b id="drsCore">OFF</b></div>
+        <div class="kv secondaryMetric"><span class="smallLabel">FUEL LAPS</span><b id="fuelLaps">--</b></div>
+        <div class="kv secondaryMetric"><span class="smallLabel">BRAKE BIAS</span><b id="brakeBias">--%</b></div>
       </div>
-      <div class="row">
+      <div class="row fuelRow">
         <div class="rowHead"><span class="label">FUEL</span><b id="fuelValue">-- L</b></div>
         <div class="track"><div class="fill" id="fuelBar"></div></div>
       </div>
-      <div class="row">
+      <div class="row ersRow">
         <div class="rowHead"><span class="label">ERS</span><b id="ersValue">--%</b></div>
         <div class="track"><div class="fill" id="ersBar"></div></div>
       </div>
-      <div class="twoCols">
+      <div class="twoCols secondaryGroup">
         <div class="kv"><span class="smallLabel">TYRE</span><b id="compound">--</b></div>
         <div class="kv"><span class="smallLabel">TYRE AGE</span><b id="tyreAge">--</b></div>
         <div class="kv"><span class="smallLabel">TC</span><b id="tractionControl">--</b></div>
@@ -892,6 +894,7 @@ function render(state) {
 
   setText('frame', input.frameIdentifier ?? 0);
   setText('drs', input.drs ? 'ON' : 'OFF');
+  setText('drsCore', input.drs ? 'ON' : 'OFF');
   setText('drsDistance', status.drsActivationDistanceM === 0 || status.drsActivationDistanceM ? status.drsActivationDistanceM + ' m' : '-- m');
   setText('pitLimiter', status.pitLimiterActive ? 'ON' : 'OFF');
   setText('sessionLeft', timeSeconds(session.sessionTimeLeftS));
