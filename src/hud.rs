@@ -270,7 +270,8 @@ fn session_json(sample: &SessionSample) -> String {
             "\"trackId\":{},",
             "\"trackTempC\":{},",
             "\"airTempC\":{},",
-            "\"sessionTimeLeftS\":{}",
+            "\"sessionTimeLeftS\":{},",
+            "\"marshalZones\":{}",
             "}}"
         ),
         sample.session_time,
@@ -281,8 +282,17 @@ fn session_json(sample: &SessionSample) -> String {
         sample.track_id,
         sample.track_temp_c,
         sample.air_temp_c,
-        sample.session_time_left_s
+        sample.session_time_left_s,
+        marshal_zones_json(&sample.marshal_zones)
     )
+}
+
+fn marshal_zones_json(zones: &[crate::telemetry::MarshalZoneSample]) -> String {
+    let zones = zones
+        .iter()
+        .map(|zone| format!("{{\"start\":{:.5},\"flag\":{}}}", zone.start, zone.flag))
+        .collect::<Vec<_>>();
+    format!("[{}]", zones.join(","))
 }
 
 fn damage_json(sample: &DamageSample) -> String {
@@ -422,7 +432,7 @@ const HUD_HTML: &str = r#"<!doctype html>
     body { margin: 0; min-height: 100vh; background: var(--bg); color: var(--text); }
     main { width: min(1460px, calc(100vw - 28px)); margin: 0 auto; padding: 14px 0 18px; display: grid; gap: 12px; }
     .barTop, .hero, .grid { display: grid; gap: 12px; }
-    .barTop { grid-template-columns: 1.2fr repeat(5, minmax(94px, .5fr)); align-items: stretch; }
+    .barTop { grid-template-columns: 1.2fr repeat(6, minmax(88px, .5fr)); align-items: stretch; }
     .hero { grid-template-columns: minmax(180px, .7fr) minmax(280px, 1fr) minmax(320px, 1.4fr); align-items: stretch; }
     .grid { grid-template-columns: 1fr 1.05fr 1fr; align-items: stretch; }
     .panel, .metric, .speed, .gear, .rpmPanel {
@@ -455,6 +465,13 @@ const HUD_HTML: &str = r#"<!doctype html>
     .rpmReadout { display: flex; justify-content: space-between; align-items: baseline; gap: 16px; }
     .rpmReadout b { font-size: 40px; line-height: 1; }
     .rpmReadout span { color: var(--muted); font-size: 22px; font-weight: 900; }
+    .rpmValue { display: flex; align-items: baseline; justify-content: flex-end; gap: 16px; min-width: 0; }
+    .speedInline { display: none; align-items: baseline; gap: 6px; white-space: nowrap; }
+    .speedInline span { color: var(--muted); font-size: 16px; font-weight: 900; }
+    .speedInline b { font-size: 34px; line-height: 1; }
+    .gapHeroPanel { align-content: stretch; }
+    .gapHeroPanel .kv { align-content: center; }
+    .gapHeroPanel .kv b { font-size: 38px; }
     .panel { padding: 12px; display: grid; gap: 12px; }
     .panel h2 { margin: 0; font-size: 13px; color: var(--muted); letter-spacing: 0; text-transform: uppercase; }
     .inputRows { display: grid; gap: 10px; }
@@ -488,6 +505,11 @@ const HUD_HTML: &str = r#"<!doctype html>
     .damageFill { width: 100%; height: 0%; background: var(--red); transition: height 120ms linear; }
     .notice { color: var(--muted); font-size: 12px; }
     .coreOnly { display: none; }
+    .flag-green b, .sector-green b { color: var(--green); }
+    .flag-blue b { color: var(--cyan); }
+    .flag-yellow b, .sector-yellow b { color: var(--amber); }
+    .flag-red b { color: var(--red); }
+    .sector-purple b { color: var(--violet); }
     .stale .panel, .stale .metric, .stale .speed, .stale .gear, .stale .rpmPanel { opacity: .72; }
     @media (max-width: 1100px) {
       .barTop { grid-template-columns: repeat(3, 1fr); }
@@ -512,11 +534,18 @@ const HUD_HTML: &str = r#"<!doctype html>
       grid-template-rows: auto 300px minmax(0, 1fr);
       padding: 10px 0;
     }
-    .mode-1920x1080 .hero { grid-template-columns: .7fr .8fr 1.35fr; }
-    .mode-1920x1080 .grid { grid-template-columns: .9fr 1.25fr 1fr; }
-    .mode-1920x1080 .speed, .mode-1920x1080 .gear, .mode-1920x1080 .rpmPanel { min-height: 300px; }
+    .mode-1920x1080 .hero { grid-template-columns: .72fr .72fr 1.56fr; }
+    .mode-1920x1080 .grid { grid-template-columns: .62fr 1fr 1.5fr; }
+    .mode-1920x1080 .speed { display: none; }
+    .mode-1920x1080 .gapHeroPanel { display: grid; padding: 12px; gap: 12px; min-height: 300px; }
+    .mode-1920x1080 .gapHeroPanel .kv b { font-size: 44px; }
+    .mode-1920x1080 .gear, .mode-1920x1080 .rpmPanel { min-height: 300px; }
+    .mode-1920x1080 .speedInline { display: flex; }
+    .mode-1920x1080 .rpmReadout { align-items: baseline; }
+    .mode-1920x1080 .rpmValue { margin-left: auto; }
     .mode-1920x1080 .panel { padding: 10px; gap: 10px; }
-    .mode-1920x1080 .trace { height: 162px; }
+    .mode-1920x1080 .racePanel .duplicateGapMetric { display: none; }
+    .mode-1920x1080 .trace { height: 156px; }
     .mode-1920x1080 .damageBars { min-height: 118px; }
     .mode-1920x1080 .damageTrack { height: 72px; }
     .mode-1920x1080 .wheel { padding: 8px; gap: 7px; }
@@ -530,7 +559,7 @@ const HUD_HTML: &str = r#"<!doctype html>
       grid-template-rows: auto 300px minmax(0, 1fr);
     }
     .mode-1080x1920 .barTop, .mode-1080x1920 .hero, .mode-1080x1920 .grid { gap: 8px; }
-    .mode-1080x1920 .barTop { grid-template-columns: 1.2fr 1fr 1fr; }
+    .mode-1080x1920 .barTop { grid-template-columns: 1.2fr 1fr 1fr 1fr; }
     .mode-1080x1920 .statusLine { grid-column: auto; padding: 8px; }
     .mode-1080x1920 .sessionMetric, .mode-1080x1920 .trackMetric, .mode-1080x1920 .airMetric, .mode-1080x1920 .inputPanel { display: none; }
     .mode-1080x1920 .metric { padding: 8px; }
@@ -558,23 +587,27 @@ const HUD_HTML: &str = r#"<!doctype html>
       grid-template-rows: 50px 300px minmax(0, 1fr);
     }
     .mode-1080x960 .barTop, .mode-1080x960 .hero, .mode-1080x960 .grid { gap: 8px; }
-    .mode-1080x960 .barTop { grid-template-columns: 1fr; }
+    .mode-1080x960 .barTop { grid-template-columns: 1fr 1fr; }
     .mode-1080x960 .statusLine, .mode-1080x960 .sessionMetric, .mode-1080x960 .positionMetric, .mode-1080x960 .trackMetric, .mode-1080x960 .airMetric, .mode-1080x960 .inputPanel { display: none; }
     .mode-1080x960 .metric { padding: 8px 14px; }
     .mode-1080x960 .metric strong, .mode-1080x960 .label, .mode-1080x960 .smallLabel { font-size: 11px; }
     .mode-1080x960 .metric b { font-size: 28px; }
-    .mode-1080x960 .hero { grid-template-columns: .85fr 1.45fr; min-height: 0; }
-    .mode-1080x960 .gear, .mode-1080x960 .leds, .mode-1080x960 .rpmReadout { display: none; }
-    .mode-1080x960 .speed, .mode-1080x960 .rpmPanel { min-height: 300px; }
-    .mode-1080x960 .speed { padding: 14px; }
-    .mode-1080x960 .speed b { font-size: 116px; }
-    .mode-1080x960 .rpmPanel { padding: 10px; }
-    .mode-1080x960 .trace { height: 278px; }
+    .mode-1080x960 .hero { grid-template-columns: .82fr 1.48fr; min-height: 0; }
+    .mode-1080x960 .speed, .mode-1080x960 .gear, .mode-1080x960 .leds { display: none; }
+    .mode-1080x960 .gapHeroPanel, .mode-1080x960 .rpmPanel { min-height: 300px; }
+    .mode-1080x960 .gapHeroPanel { display: grid; padding: 12px; gap: 12px; }
+    .mode-1080x960 .gapHeroPanel .kv b { font-size: 46px; }
+    .mode-1080x960 .rpmPanel { padding: 10px; align-content: stretch; }
+    .mode-1080x960 .rpmReadout { display: flex; }
+    .mode-1080x960 .speedInline { display: flex; }
+    .mode-1080x960 .rpmValue b { font-size: 30px; }
+    .mode-1080x960 .rpmValue span { font-size: 18px; }
+    .mode-1080x960 .trace { height: 248px; }
     .mode-1080x960 .grid { grid-template-columns: .88fr 1.12fr; min-height: 0; }
     .mode-1080x960 .panel { padding: 10px; gap: 10px; min-height: 0; overflow: hidden; }
     .mode-1080x960 .panel h2 { font-size: 12px; }
     .mode-1080x960 .twoCols, .mode-1080x960 .wheels { gap: 8px; }
-    .mode-1080x960 .tyrePanel .track, .mode-1080x960 .tyrePanel .mini, .mode-1080x960 .secondaryMetric, .mode-1080x960 .secondaryGroup, .mode-1080x960 .fuelRow, .mode-1080x960 .damageBars { display: none; }
+    .mode-1080x960 .tyrePanel .track, .mode-1080x960 .tyrePanel .mini, .mode-1080x960 .racePanel .duplicateGapMetric, .mode-1080x960 .secondaryMetric, .mode-1080x960 .secondaryGroup, .mode-1080x960 .fuelRow, .mode-1080x960 .damageBars { display: none; }
     .mode-1080x960 .wheel { padding: 10px; gap: 4px; }
     .mode-1080x960 .wheelTop b { font-size: 34px; }
     .mode-1080x960 .kv { gap: 8px; padding-top: 8px; }
@@ -597,16 +630,24 @@ const HUD_HTML: &str = r#"<!doctype html>
     <div class="metric sessionMetric"><strong>SESSION</strong><b id="sessionLeft">--:--</b></div>
     <div class="metric lapMetric"><strong>LAP</strong><b id="lapCount">--/--</b></div>
     <div class="metric positionMetric"><strong>POSITION</strong><b id="position">P--</b></div>
+    <div class="metric flagMetric" id="flagMetric"><strong>FLAG</strong><b id="flag">CLEAR</b></div>
     <div class="metric trackMetric"><strong>TRACK</strong><b id="trackTemp">-- C</b></div>
     <div class="metric airMetric"><strong>AIR</strong><b id="airTemp">-- C</b></div>
   </section>
 
   <section class="hero">
+    <div class="panel gapHeroPanel coreOnly">
+      <div class="kv gapMetric"><span class="smallLabel">GAP AHEAD</span><b id="gapFrontHero">--</b></div>
+      <div class="kv gapMetric"><span class="smallLabel">GAP BEHIND</span><b id="gapBehindHero">--</b></div>
+    </div>
     <div class="speed"><span>SPEED</span><b id="speed">0</b><span>KM/H</span></div>
     <div class="gear"><b id="gear">N</b></div>
     <div class="rpmPanel">
       <div class="leds" id="leds"></div>
-      <div class="rpmReadout"><b id="rpm">0 RPM</b><span id="rev">0%</span></div>
+      <div class="rpmReadout">
+        <div class="speedInline"><b id="speedInline">0</b><span>KM/H</span></div>
+        <div class="rpmValue"><b id="rpm">0 RPM</b><span id="rev">0%</span></div>
+      </div>
       <canvas class="trace" id="trace" width="1000" height="180"></canvas>
     </div>
   </section>
@@ -703,10 +744,11 @@ const HUD_HTML: &str = r#"<!doctype html>
       <div class="twoCols">
         <div class="kv lapDetail"><span class="smallLabel">CURRENT</span><b id="currentLap">--:--.---</b></div>
         <div class="kv lapDetail"><span class="smallLabel">LAST</span><b id="lastLap">--:--.---</b></div>
-        <div class="kv secondaryMetric"><span class="smallLabel">SECTOR 1</span><b id="sector1">--:--.---</b></div>
-        <div class="kv secondaryMetric"><span class="smallLabel">SECTOR 2</span><b id="sector2">--:--.---</b></div>
-        <div class="kv gapMetric"><span class="smallLabel">GAP AHEAD</span><b id="gapFront">--</b></div>
-        <div class="kv gapMetric"><span class="smallLabel">GAP BEHIND</span><b id="gapBehind">--</b></div>
+        <div class="kv secondaryMetric sectorMetric" id="sector1Metric"><span class="smallLabel">SECTOR 1</span><b id="sector1">--:--.---</b></div>
+        <div class="kv secondaryMetric sectorMetric" id="sector2Metric"><span class="smallLabel">SECTOR 2</span><b id="sector2">--:--.---</b></div>
+        <div class="kv secondaryMetric sectorMetric" id="sector3Metric"><span class="smallLabel">SECTOR 3</span><b id="sector3">--:--.---</b></div>
+        <div class="kv gapMetric duplicateGapMetric"><span class="smallLabel">GAP AHEAD</span><b id="gapFront">--</b></div>
+        <div class="kv gapMetric duplicateGapMetric"><span class="smallLabel">GAP BEHIND</span><b id="gapBehind">--</b></div>
         <div class="kv gapMetric"><span class="smallLabel">GAP LEADER</span><b id="gapLeader">--</b></div>
         <div class="kv coreOnly"><span class="smallLabel">DRS</span><b id="drsCore">OFF</b></div>
         <div class="kv secondaryMetric"><span class="smallLabel">FUEL LAPS</span><b id="fuelLaps">--</b></div>
@@ -740,7 +782,7 @@ const HUD_HTML: &str = r#"<!doctype html>
 <script>
 const clamp = (value, min, max) => Math.max(min, Math.min(max, value));
 const pct = value => clamp(Math.round((value || 0) * 100), 0, 100);
-const percentValue = value => value === null || value === undefined ? '--%' : clamp(Math.round(value), 0, 100) + '%';
+const percentValue = value => value === null || value === undefined || value < 0 ? '--%' : clamp(Math.round(value), 0, 100) + '%';
 const numberValue = (value, suffix = '', digits = 0) => value === null || value === undefined ? '--' + suffix : Number(value).toFixed(digits) + suffix;
 const intValue = (value, suffix = '') => value === null || value === undefined ? '--' + suffix : Math.round(value) + suffix;
 const setText = (id, value) => { document.getElementById(id).textContent = value; };
@@ -766,6 +808,63 @@ function timeSeconds(value) {
 function gap(value) {
   if (value === null || value === undefined) return '--';
   return '+' + (value / 1000).toFixed(3);
+}
+const flagMeta = flag => ({
+  '-1': ['UNKNOWN', 'neutral'],
+  0: ['CLEAR', 'neutral'],
+  1: ['GREEN', 'green'],
+  2: ['BLUE', 'blue'],
+  3: ['YELLOW', 'yellow'],
+  4: ['RED', 'red'],
+}[flag] || ['CLEAR', 'neutral']);
+function setStateClass(element, prefix, value) {
+  Array.from(element.classList)
+    .filter(className => className.startsWith(prefix))
+    .forEach(className => element.classList.remove(className));
+  if (value && value !== 'neutral') element.classList.add(prefix + value);
+}
+function currentFlag(session, lap) {
+  const zones = Array.isArray(session.marshalZones) ? session.marshalZones : [];
+  const trackLength = session.trackLengthM || 0;
+  if (zones.length === 0 || trackLength <= 0 || lap.lapDistanceM === null || lap.lapDistanceM === undefined) return 0;
+  const lapDistance = ((lap.lapDistanceM % trackLength) + trackLength) % trackLength;
+  const fraction = lapDistance / trackLength;
+  const sorted = zones
+    .filter(zone => Number.isFinite(zone.start) && zone.start >= 0 && zone.start <= 1)
+    .sort((left, right) => left.start - right.start);
+  let active = sorted[sorted.length - 1];
+  for (const zone of sorted) {
+    if (zone.start <= fraction) active = zone; else break;
+  }
+  return active ? active.flag : 0;
+}
+function setFlag(flag) {
+  const [label, className] = flagMeta(flag);
+  setText('flag', label);
+  setStateClass(document.getElementById('flagMetric'), 'flag-', className);
+}
+const sectorBest = { 1: null, 2: null, 3: null };
+function sector3Time(lap) {
+  const last = lap.lastLapTimeMs;
+  const first = lap.sector1TimeMs;
+  const second = lap.sector2TimeMs;
+  if (last === null || last === undefined || first === null || first === undefined || second === null || second === undefined) return null;
+  const third = last - first - second;
+  return third > 0 ? third : null;
+}
+function sectorClass(index, value, currentSector) {
+  if (currentSector === index - 1 && (value === null || value === undefined)) return 'yellow';
+  if (value === null || value === undefined) return 'neutral';
+  const best = sectorBest[index];
+  if (best === null || value < best) {
+    sectorBest[index] = value;
+    return 'purple';
+  }
+  return value === sectorBest[index] ? 'purple' : 'green';
+}
+function setSector(index, value, currentSector) {
+  setText('sector' + index, timeMs(value));
+  setStateClass(document.getElementById('sector' + index + 'Metric'), 'sector-', sectorClass(index, value, currentSector));
 }
 function updateLayoutMode() {
   const app = document.getElementById('app');
@@ -799,6 +898,7 @@ function drawTrace() {
   const width = canvas.width;
   const height = canvas.height;
   ctx.clearRect(0, 0, width, height);
+  drawFlagBands(width, height);
   ctx.strokeStyle = '#3a3528';
   ctx.lineWidth = 1;
   for (let i = 1; i < 4; i += 1) {
@@ -811,6 +911,18 @@ function drawTrace() {
   drawLine('throttle', '#21d17c', value => height - value * height);
   drawLine('brake', '#ff4d45', value => height - value * height);
   drawLine('steer', '#51d6d0', value => height / 2 - value * height / 2);
+  drawAssistTicks('tc', '#b58cff', 0, 16);
+  drawAssistTicks('abs', '#f0c247', height - 16, height);
+}
+function drawFlagBands(width, height) {
+  if (trace.length < 2) return;
+  trace.forEach((sample, index) => {
+    const color = { 1: 'rgba(33, 209, 124, .12)', 2: 'rgba(81, 214, 208, .14)', 3: 'rgba(240, 194, 71, .16)', 4: 'rgba(255, 77, 69, .18)' }[sample.flag];
+    if (!color) return;
+    const x = index * width / Math.max(1, trace.length - 1);
+    ctx.fillStyle = color;
+    ctx.fillRect(x, 0, Math.max(2, width / Math.max(1, trace.length)), height);
+  });
 }
 function drawLine(key, color, yFor) {
   if (trace.length < 2) return;
@@ -823,6 +935,19 @@ function drawLine(key, color, yFor) {
     if (index === 0) ctx.moveTo(x, y); else ctx.lineTo(x, y);
   });
   ctx.stroke();
+}
+function drawAssistTicks(key, color, y1, y2) {
+  if (trace.length < 2) return;
+  ctx.strokeStyle = color;
+  ctx.lineWidth = 2;
+  trace.forEach((sample, index) => {
+    if (!sample[key]) return;
+    const x = index * canvas.width / Math.max(1, trace.length - 1);
+    ctx.beginPath();
+    ctx.moveTo(x, y1);
+    ctx.lineTo(x, y2);
+    ctx.stroke();
+  });
 }
 
 function updateWheel(corner, state) {
@@ -872,7 +997,9 @@ function render(state) {
   const steer = clamp(Math.round((input.steer || 0) * 100), -100, 100);
   const clutch = clamp(Math.round(input.clutch || 0), 0, 100);
   const rev = clamp(input.revLightsPercent || 0, 0, 100);
+  const activeFlag = currentFlag(session, lap);
   setText('speed', input.speedKmh ?? 0);
+  setText('speedInline', input.speedKmh ?? 0);
   setText('gear', gearLabel(input.gear));
   setText('rpm', (input.rpm ?? 0) + ' RPM');
   setText('rev', Math.round(rev) + '%');
@@ -902,13 +1029,19 @@ function render(state) {
   setText('position', lap.carPosition ? 'P' + lap.carPosition : 'P--');
   setText('trackTemp', intValue(session.trackTempC, ' C'));
   setText('airTemp', intValue(session.airTempC, ' C'));
+  setFlag(activeFlag);
 
   setText('currentLap', timeMs(lap.currentLapTimeMs));
   setText('lastLap', timeMs(lap.lastLapTimeMs));
-  setText('sector1', timeMs(lap.sector1TimeMs));
-  setText('sector2', timeMs(lap.sector2TimeMs));
-  setText('gapFront', gap(lap.deltaToCarInFrontMs));
-  setText('gapBehind', gap(lap.deltaToCarBehindMs));
+  setSector(1, lap.sector1TimeMs, lap.sector);
+  setSector(2, lap.sector2TimeMs, lap.sector);
+  setSector(3, sector3Time(lap), lap.sector);
+  const gapFrontValue = gap(lap.deltaToCarInFrontMs);
+  const gapBehindValue = gap(lap.deltaToCarBehindMs);
+  setText('gapFront', gapFrontValue);
+  setText('gapBehind', gapBehindValue);
+  setText('gapFrontHero', gapFrontValue);
+  setText('gapBehindHero', gapBehindValue);
   setText('gapLeader', gap(lap.deltaToRaceLeaderMs));
   setText('fuelLaps', numberValue(status.fuelRemainingLaps, '', 1));
   setText('brakeBias', intValue(status.frontBrakeBias, '%'));
@@ -928,7 +1061,14 @@ function render(state) {
   updateDamage('engineDamage', damage.engineDamage);
   updateDamage('gearboxDamage', damage.gearboxDamage);
 
-  trace.push({ throttle: input.throttle || 0, brake: input.brake || 0, steer: input.steer || 0 });
+  trace.push({
+    throttle: input.throttle || 0,
+    brake: input.brake || 0,
+    steer: input.steer || 0,
+    tc: (status.tractionControl || 0) > 0 && throttle >= 70,
+    abs: (status.antiLockBrakes || 0) > 0 && brake >= 55,
+    flag: activeFlag,
+  });
   if (trace.length > 220) trace.shift();
   drawTrace();
 }

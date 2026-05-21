@@ -654,6 +654,7 @@ mod tests {
                 track_temp_c: 0,
                 air_temp_c: 0,
                 session_time_left_s: 0,
+                marshal_zones: Vec::new(),
             }),
             ..TelemetryUpdate::default()
         });
@@ -684,6 +685,7 @@ mod tests {
                 track_temp_c: 0,
                 air_temp_c: 0,
                 session_time_left_s: 0,
+                marshal_zones: Vec::new(),
             }),
             ..TelemetryUpdate::default()
         });
