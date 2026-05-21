@@ -466,9 +466,9 @@ const HUD_HTML: &str = r#"<!doctype html>
     .rpmReadout b { font-size: 40px; line-height: 1; }
     .rpmReadout span { color: var(--muted); font-size: 22px; font-weight: 900; }
     .rpmValue { display: flex; align-items: baseline; justify-content: flex-end; gap: 16px; min-width: 0; }
-    .speedInline { display: none; align-content: end; gap: 2px; min-width: 82px; }
-    .speedInline span { color: var(--muted); font-size: 10px; font-weight: 900; }
-    .speedInline b { font-size: 32px; }
+    .speedInline { display: none; align-items: baseline; gap: 6px; white-space: nowrap; }
+    .speedInline span { color: var(--muted); font-size: 16px; font-weight: 900; }
+    .speedInline b { font-size: 34px; line-height: 1; }
     .gapHeroPanel { align-content: stretch; }
     .gapHeroPanel .kv { align-content: center; }
     .gapHeroPanel .kv b { font-size: 38px; }
@@ -535,15 +535,16 @@ const HUD_HTML: &str = r#"<!doctype html>
       padding: 10px 0;
     }
     .mode-1920x1080 .hero { grid-template-columns: .72fr .72fr 1.56fr; }
-    .mode-1920x1080 .grid { grid-template-columns: .9fr 1.25fr 1fr; }
+    .mode-1920x1080 .grid { grid-template-columns: .62fr 1fr 1.5fr; }
     .mode-1920x1080 .speed { display: none; }
     .mode-1920x1080 .gapHeroPanel { display: grid; padding: 12px; gap: 12px; min-height: 300px; }
     .mode-1920x1080 .gapHeroPanel .kv b { font-size: 44px; }
     .mode-1920x1080 .gear, .mode-1920x1080 .rpmPanel { min-height: 300px; }
-    .mode-1920x1080 .speedInline { display: grid; }
+    .mode-1920x1080 .speedInline { display: flex; }
     .mode-1920x1080 .rpmReadout { align-items: baseline; }
     .mode-1920x1080 .rpmValue { margin-left: auto; }
     .mode-1920x1080 .panel { padding: 10px; gap: 10px; }
+    .mode-1920x1080 .racePanel .duplicateGapMetric { display: none; }
     .mode-1920x1080 .trace { height: 156px; }
     .mode-1920x1080 .damageBars { min-height: 118px; }
     .mode-1920x1080 .damageTrack { height: 72px; }
@@ -598,7 +599,7 @@ const HUD_HTML: &str = r#"<!doctype html>
     .mode-1080x960 .gapHeroPanel .kv b { font-size: 46px; }
     .mode-1080x960 .rpmPanel { padding: 10px; align-content: stretch; }
     .mode-1080x960 .rpmReadout { display: flex; }
-    .mode-1080x960 .speedInline { display: grid; }
+    .mode-1080x960 .speedInline { display: flex; }
     .mode-1080x960 .rpmValue b { font-size: 30px; }
     .mode-1080x960 .rpmValue span { font-size: 18px; }
     .mode-1080x960 .trace { height: 248px; }
@@ -606,7 +607,7 @@ const HUD_HTML: &str = r#"<!doctype html>
     .mode-1080x960 .panel { padding: 10px; gap: 10px; min-height: 0; overflow: hidden; }
     .mode-1080x960 .panel h2 { font-size: 12px; }
     .mode-1080x960 .twoCols, .mode-1080x960 .wheels { gap: 8px; }
-    .mode-1080x960 .tyrePanel .track, .mode-1080x960 .tyrePanel .mini, .mode-1080x960 .racePanel .gapMetric, .mode-1080x960 .secondaryMetric, .mode-1080x960 .secondaryGroup, .mode-1080x960 .fuelRow, .mode-1080x960 .damageBars { display: none; }
+    .mode-1080x960 .tyrePanel .track, .mode-1080x960 .tyrePanel .mini, .mode-1080x960 .racePanel .duplicateGapMetric, .mode-1080x960 .secondaryMetric, .mode-1080x960 .secondaryGroup, .mode-1080x960 .fuelRow, .mode-1080x960 .damageBars { display: none; }
     .mode-1080x960 .wheel { padding: 10px; gap: 4px; }
     .mode-1080x960 .wheelTop b { font-size: 34px; }
     .mode-1080x960 .kv { gap: 8px; padding-top: 8px; }
@@ -644,7 +645,7 @@ const HUD_HTML: &str = r#"<!doctype html>
     <div class="rpmPanel">
       <div class="leds" id="leds"></div>
       <div class="rpmReadout">
-        <div class="speedInline"><span>SPEED</span><b id="speedInline">0</b><span>KM/H</span></div>
+        <div class="speedInline"><b id="speedInline">0</b><span>KM/H</span></div>
         <div class="rpmValue"><b id="rpm">0 RPM</b><span id="rev">0%</span></div>
       </div>
       <canvas class="trace" id="trace" width="1000" height="180"></canvas>
@@ -746,8 +747,8 @@ const HUD_HTML: &str = r#"<!doctype html>
         <div class="kv secondaryMetric sectorMetric" id="sector1Metric"><span class="smallLabel">SECTOR 1</span><b id="sector1">--:--.---</b></div>
         <div class="kv secondaryMetric sectorMetric" id="sector2Metric"><span class="smallLabel">SECTOR 2</span><b id="sector2">--:--.---</b></div>
         <div class="kv secondaryMetric sectorMetric" id="sector3Metric"><span class="smallLabel">SECTOR 3</span><b id="sector3">--:--.---</b></div>
-        <div class="kv gapMetric"><span class="smallLabel">GAP AHEAD</span><b id="gapFront">--</b></div>
-        <div class="kv gapMetric"><span class="smallLabel">GAP BEHIND</span><b id="gapBehind">--</b></div>
+        <div class="kv gapMetric duplicateGapMetric"><span class="smallLabel">GAP AHEAD</span><b id="gapFront">--</b></div>
+        <div class="kv gapMetric duplicateGapMetric"><span class="smallLabel">GAP BEHIND</span><b id="gapBehind">--</b></div>
         <div class="kv gapMetric"><span class="smallLabel">GAP LEADER</span><b id="gapLeader">--</b></div>
         <div class="kv coreOnly"><span class="smallLabel">DRS</span><b id="drsCore">OFF</b></div>
         <div class="kv secondaryMetric"><span class="smallLabel">FUEL LAPS</span><b id="fuelLaps">--</b></div>
