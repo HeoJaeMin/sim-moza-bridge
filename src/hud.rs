@@ -534,11 +534,17 @@ const HUD_HTML: &str = r#"<!doctype html>
       grid-template-rows: auto 300px minmax(0, 1fr);
       padding: 10px 0;
     }
-    .mode-1920x1080 .hero { grid-template-columns: .7fr .8fr 1.35fr; }
+    .mode-1920x1080 .hero { grid-template-columns: .72fr .72fr 1.56fr; }
     .mode-1920x1080 .grid { grid-template-columns: .9fr 1.25fr 1fr; }
-    .mode-1920x1080 .speed, .mode-1920x1080 .gear, .mode-1920x1080 .rpmPanel { min-height: 300px; }
+    .mode-1920x1080 .speed { display: none; }
+    .mode-1920x1080 .gapHeroPanel { display: grid; padding: 12px; gap: 12px; min-height: 300px; }
+    .mode-1920x1080 .gapHeroPanel .kv b { font-size: 44px; }
+    .mode-1920x1080 .gear, .mode-1920x1080 .rpmPanel { min-height: 300px; }
+    .mode-1920x1080 .speedInline { display: grid; }
+    .mode-1920x1080 .rpmReadout { align-items: baseline; }
+    .mode-1920x1080 .rpmValue { margin-left: auto; }
     .mode-1920x1080 .panel { padding: 10px; gap: 10px; }
-    .mode-1920x1080 .trace { height: 162px; }
+    .mode-1920x1080 .trace { height: 156px; }
     .mode-1920x1080 .damageBars { min-height: 118px; }
     .mode-1920x1080 .damageTrack { height: 72px; }
     .mode-1920x1080 .wheel { padding: 8px; gap: 7px; }
