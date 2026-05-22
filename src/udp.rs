@@ -1,40 +1,26 @@
 use std::net::UdpSocket;
-use std::process::Command;
 use std::time::{Duration, Instant};
 
-use crate::analysis::TelemetryAnalyzer;
 use crate::bridge::TelemetryBridge;
 use crate::config::BridgeConfig;
-use crate::hud::{HudHandle, start_hud_server};
-use crate::logging::{CornerLogger, InputLogger, write_analysis_report};
+use crate::hud::HudHandle;
+use crate::logging::{TelemetryRecorder, print_enabled_outputs};
 
 const UDP_BUFFER_SIZE: usize = 65_535;
 
 #[cfg_attr(any(target_os = "macos", target_os = "windows"), allow(dead_code))]
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
-enum HudLaunch {
-    Web,
-    Native,
-}
-
-#[cfg_attr(any(target_os = "macos", target_os = "windows"), allow(dead_code))]
 pub fn start_udp_bridge(config: BridgeConfig) -> Result<(), String> {
-    let hud = start_optional_hud(&config)?;
-    run_udp_bridge(config, hud, HudLaunch::Web)
+    run_udp_bridge(config, None)
 }
 
 pub fn start_udp_bridge_with_hud(
     config: BridgeConfig,
     hud: Option<HudHandle>,
 ) -> Result<(), String> {
-    run_udp_bridge(config, hud, HudLaunch::Native)
+    run_udp_bridge(config, hud)
 }
 
-fn run_udp_bridge(
-    config: BridgeConfig,
-    hud: Option<HudHandle>,
-    hud_launch: HudLaunch,
-) -> Result<(), String> {
+fn run_udp_bridge(config: BridgeConfig, hud: Option<HudHandle>) -> Result<(), String> {
     let receiver = UdpSocket::bind(format!("{}:{}", config.listen_host, config.listen_port))
         .map_err(|error| format!("bind failed: {error}"))?;
     let sender =
@@ -46,22 +32,7 @@ fn run_udp_bridge(
         config.fix_tyre_wear_order,
         config.f1_24_car_damage_compat,
     );
-    let mut input_logger = config
-        .input_log
-        .as_deref()
-        .map(InputLogger::open)
-        .transpose()?;
-    let mut corner_logger = config
-        .corner_log
-        .as_deref()
-        .map(CornerLogger::open)
-        .transpose()?;
-    let mut analyzer = if config.corner_log.is_some() || config.analysis_report.is_some() {
-        Some(TelemetryAnalyzer::default())
-    } else {
-        None
-    };
-    let mut analysis_report = config.analysis_report.clone();
+    let mut recorder = TelemetryRecorder::open(&config)?;
     let mut last_stats = Instant::now();
     let mut buffer = vec![0_u8; UDP_BUFFER_SIZE];
 
@@ -85,16 +56,8 @@ fn run_udp_bridge(
             config.listen_host
         );
     }
-    if let Some(path) = &config.input_log {
-        println!("input logging enabled: {path}");
-    }
-    if let Some(path) = &config.corner_log {
-        println!("corner trace logging enabled: {path}");
-    }
-    if let Some(path) = &config.analysis_report {
-        println!("analysis report enabled: {path}");
-    }
-    print_optional_hud(&config, hud_launch, hud.is_some());
+    print_enabled_outputs(&config);
+    print_optional_hud(hud.is_some());
 
     loop {
         let (size, _) = receiver
@@ -116,51 +79,14 @@ fn run_udp_bridge(
             println!("[patch] packet remapped");
         }
 
-        if let Some(sample) = &result.input_sample {
-            let input_log_error = input_logger
-                .as_mut()
-                .and_then(|logger| logger.write(sample).err());
-            if let Some(error) = input_log_error {
-                eprintln!("[log-error] {error}; disabling input logging");
-                input_logger = None;
-            }
-        }
-
         if let Some(hud) = &hud
             && !result.telemetry_update.is_empty()
         {
             hud.update(&result.telemetry_update);
         }
 
-        if let Some(analyzer) = &mut analyzer
-            && !result.telemetry_update.is_empty()
-            && let Some(analysis) = analyzer.ingest(&result.telemetry_update)
-        {
-            let corner_log_error = corner_logger
-                .as_mut()
-                .and_then(|logger| logger.write(&analysis).err());
-            if let Some(error) = corner_log_error {
-                eprintln!("[log-error] {error}; disabling corner logging");
-                corner_logger = None;
-            }
-
-            let report_error = analysis_report
-                .as_deref()
-                .and_then(|path| write_analysis_report(path, &analysis).err());
-            if let Some(error) = report_error {
-                eprintln!("[log-error] {error}; disabling analysis report writes");
-                analysis_report = None;
-            }
-
-            if config.debug {
-                println!(
-                    "[analysis] lap={} clean={} samples={} recommendations={}",
-                    analysis.lap_num,
-                    analysis.clean,
-                    analysis.sample_count,
-                    analysis.recommendations.len()
-                );
-            }
+        if !result.telemetry_update.is_empty() {
+            recorder.ingest(&result.telemetry_update, config.debug);
         }
 
         if !config.dry_run {
@@ -185,61 +111,12 @@ fn run_udp_bridge(
     }
 }
 
-#[cfg_attr(any(target_os = "macos", target_os = "windows"), allow(dead_code))]
-fn start_optional_hud(config: &BridgeConfig) -> Result<Option<HudHandle>, String> {
-    config
-        .hud_http_port
-        .map(|port| start_hud_server(&config.hud_host, port))
-        .transpose()
-}
-
 fn is_loopback_host(host: &str) -> bool {
     matches!(host, "127.0.0.1" | "localhost" | "::1")
 }
 
-fn print_optional_hud(config: &BridgeConfig, launch: HudLaunch, enabled: bool) {
-    if !enabled {
-        return;
+fn print_optional_hud(enabled: bool) {
+    if enabled {
+        println!("HUD: native window");
     }
-
-    match launch {
-        HudLaunch::Native => println!("HUD: native window"),
-        HudLaunch::Web => {
-            if let Some(port) = config.hud_http_port {
-                let hud_url = format!("http://{}:{port}", config.hud_host);
-                println!("HUD: {hud_url}");
-                if let Err(error) = open_browser(&hud_url) {
-                    eprintln!("[warning] failed to open HUD in browser: {error}");
-                }
-            }
-        }
-    }
-}
-
-fn open_browser(url: &str) -> Result<(), String> {
-    open_browser_command(url)
-        .spawn()
-        .map(|_| ())
-        .map_err(|error| error.to_string())
-}
-
-#[cfg(target_os = "windows")]
-fn open_browser_command(url: &str) -> Command {
-    let mut command = Command::new("cmd");
-    command.args(["/C", "start", "", url]);
-    command
-}
-
-#[cfg(target_os = "macos")]
-fn open_browser_command(url: &str) -> Command {
-    let mut command = Command::new("open");
-    command.arg(url);
-    command
-}
-
-#[cfg(all(unix, not(target_os = "macos")))]
-fn open_browser_command(url: &str) -> Command {
-    let mut command = Command::new("xdg-open");
-    command.arg(url);
-    command
 }

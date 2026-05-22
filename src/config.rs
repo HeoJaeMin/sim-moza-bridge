@@ -37,8 +37,6 @@ pub struct BridgeConfig {
     pub input_log: Option<String>,
     pub corner_log: Option<String>,
     pub analysis_report: Option<String>,
-    pub hud_host: String,
-    pub hud_http_port: Option<u16>,
     pub dry_run: bool,
     pub debug: bool,
 }
@@ -48,6 +46,9 @@ struct RawArgs {
     game: Option<String>,
     listen: Option<String>,
     moza_port: Option<String>,
+    input_log: Option<String>,
+    corner_log: Option<String>,
+    analysis_report: Option<String>,
     debug: bool,
 }
 
@@ -82,11 +83,9 @@ where
         mode: BridgeMode::Remap,
         fix_tyre_wear_order: false,
         f1_24_car_damage_compat: true,
-        input_log: None,
-        corner_log: None,
-        analysis_report: None,
-        hud_host: "127.0.0.1".to_owned(),
-        hud_http_port: Some(8765),
+        input_log: raw.input_log,
+        corner_log: raw.corner_log,
+        analysis_report: raw.analysis_report,
         dry_run: false,
         debug: raw.debug,
     })
@@ -104,6 +103,11 @@ where
             "--game" => raw.game = Some(next_value(&mut iter, "--game")?),
             "--listen" => raw.listen = Some(next_value(&mut iter, "--listen")?),
             "--moza-port" => raw.moza_port = Some(next_value(&mut iter, "--moza-port")?),
+            "--input-log" => raw.input_log = Some(next_value(&mut iter, "--input-log")?),
+            "--corner-log" => raw.corner_log = Some(next_value(&mut iter, "--corner-log")?),
+            "--analysis-report" => {
+                raw.analysis_report = Some(next_value(&mut iter, "--analysis-report")?)
+            }
             "--debug" => raw.debug = true,
             "--help" | "-h" => return Err(ConfigError::Help(help_text())),
             unknown => {
@@ -152,6 +156,9 @@ fn help_text() -> String {
         "  --game <auto|f1-25|generic-udp|lmu|lu|ace|acr>",
         "  --listen <port>",
         "  --moza-port <port>",
+        "  --input-log <path>",
+        "  --corner-log <path>",
+        "  --analysis-report <path>",
         "  --debug",
     ]
     .join("\n")
@@ -176,7 +183,6 @@ mod tests {
         assert_eq!(config.mode, BridgeMode::Remap);
         assert!(!config.fix_tyre_wear_order);
         assert!(config.f1_24_car_damage_compat);
-        assert_eq!(config.hud_http_port, Some(8765));
         assert!(!config.dry_run);
         assert!(!config.debug);
     }
@@ -188,6 +194,23 @@ mod tests {
         assert_eq!(config.listen_port, 21000);
         assert_eq!(config.moza_port, 22025);
         assert!(config.debug);
+    }
+
+    #[test]
+    fn parses_logging_and_analysis_outputs() {
+        let config = parse(&[
+            "--input-log",
+            "inputs.csv",
+            "--corner-log",
+            "corners.csv",
+            "--analysis-report",
+            "analysis.md",
+        ])
+        .unwrap();
+
+        assert_eq!(config.input_log.as_deref(), Some("inputs.csv"));
+        assert_eq!(config.corner_log.as_deref(), Some("corners.csv"));
+        assert_eq!(config.analysis_report.as_deref(), Some("analysis.md"));
     }
 
     #[test]
@@ -243,6 +266,24 @@ mod tests {
                 .unwrap_err()
                 .to_string()
                 .contains("--moza-port requires a value")
+        );
+        assert!(
+            parse(&["--input-log"])
+                .unwrap_err()
+                .to_string()
+                .contains("--input-log requires a value")
+        );
+        assert!(
+            parse(&["--corner-log"])
+                .unwrap_err()
+                .to_string()
+                .contains("--corner-log requires a value")
+        );
+        assert!(
+            parse(&["--analysis-report"])
+                .unwrap_err()
+                .to_string()
+                .contains("--analysis-report requires a value")
         );
     }
 

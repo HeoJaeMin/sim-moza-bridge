@@ -12,7 +12,7 @@ use crate::f1::header::{PacketHeader, parse_packet_header};
 use crate::f1::lap_data::parse_player_lap_sample;
 use crate::f1::session::parse_session_sample;
 use crate::games::{GameProfile, ProtocolKind};
-use crate::telemetry::{InputSample, TelemetryUpdate};
+use crate::telemetry::TelemetryUpdate;
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum BridgeMode {
@@ -35,7 +35,6 @@ pub struct ProcessedPacket {
     pub packet: Vec<u8>,
     pub patched: bool,
     pub detected_game: Option<GameProfile>,
-    pub input_sample: Option<InputSample>,
     pub telemetry_update: TelemetryUpdate,
 }
 
@@ -78,7 +77,6 @@ impl TelemetryBridge {
                 packet: packet.to_vec(),
                 patched: false,
                 detected_game,
-                input_sample: None,
                 telemetry_update: TelemetryUpdate::default(),
             });
         }
@@ -89,14 +87,11 @@ impl TelemetryBridge {
         } else {
             TelemetryUpdate::default()
         };
-        let input_sample = telemetry_update.input.clone();
-
         if self.mode == BridgeMode::Passthrough {
             return Some(ProcessedPacket {
                 packet: packet.to_vec(),
                 patched: false,
                 detected_game,
-                input_sample,
                 telemetry_update,
             });
         }
@@ -107,7 +102,6 @@ impl TelemetryBridge {
                 packet: packet.to_vec(),
                 patched: false,
                 detected_game,
-                input_sample,
                 telemetry_update,
             });
         }
@@ -124,7 +118,6 @@ impl TelemetryBridge {
                         packet: packet.to_vec(),
                         patched: false,
                         detected_game,
-                        input_sample,
                         telemetry_update,
                     });
                 }
@@ -137,7 +130,6 @@ impl TelemetryBridge {
                         packet: packet.to_vec(),
                         patched: false,
                         detected_game,
-                        input_sample,
                         telemetry_update,
                     });
                 };
@@ -149,7 +141,6 @@ impl TelemetryBridge {
                 packet: patched_packet,
                 patched: true,
                 detected_game,
-                input_sample,
                 telemetry_update,
             });
         }
@@ -158,7 +149,6 @@ impl TelemetryBridge {
             packet: packet.to_vec(),
             patched: false,
             detected_game,
-            input_sample,
             telemetry_update,
         })
     }
@@ -374,7 +364,7 @@ mod tests {
         );
 
         let result = bridge.process(&make_f1_car_telemetry_packet()).unwrap();
-        let sample = result.input_sample.unwrap();
+        let sample = result.telemetry_update.input.unwrap();
 
         assert_eq!(sample.frame_identifier, 88);
         assert_eq!(sample.throttle, 0.5);
@@ -397,7 +387,6 @@ mod tests {
             .process(&make_unsupported_car_telemetry_packet())
             .unwrap();
 
-        assert!(result.input_sample.is_none());
         assert!(result.telemetry_update.is_empty());
     }
 

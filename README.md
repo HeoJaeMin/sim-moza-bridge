@@ -70,7 +70,13 @@ cargo run -- --listen 20777 --moza-port 22025
 cargo run -- --debug
 ```
 
-브리지가 시작되면 로컬 HUD가 Rust native 창으로 열립니다. macOS에서는 macOS 창, Windows에서는 Windows 창으로 실행되며 브라우저를 열지 않습니다.
+F1 UDP 입력을 CSV와 Markdown 분석 파일로 남길 수 있습니다.
+
+```bash
+cargo run -- --input-log inputs.csv --corner-log corners.csv --analysis-report analysis.md
+```
+
+브리지가 시작되면 로컬 HUD가 Rust native 창으로 열립니다. macOS에서는 macOS 창, Windows에서는 Windows 창으로 실행됩니다.
 
 HUD에는 속도, 기어, RPM, REV LED, 입력 추적, 타이어/브레이크 상태, 앞차/뒤차/선두 gap, 연료, ERS, 손상 패널이 기본으로 표시됩니다.
 
@@ -81,7 +87,6 @@ HUD에는 속도, 기어, RPM, REV LED, 입력 추적, 타이어/브레이크 �
 - `127.0.0.1:20777`에서 F1 25 UDP를 받습니다.
 - `127.0.0.1:22025`로 MOZA Pit House에 전달합니다.
 - macOS/Windows에서는 브리지 프로세스 안에서 Rust native HUD 창을 띄웁니다.
-- 그 외 플랫폼에서는 `127.0.0.1:8765` HTTP HUD를 fallback으로 띄우고 기본 브라우저로 엽니다.
 - F1 25 패킷이 감지되면 `PacketCarDamageData`를 MOZA가 읽기 쉬운 F1 24 호환 레이아웃으로 자동 변환합니다.
 - MOZA 대시의 `TyreWear*` 값이 `100`에 고정되는 문제를 피하기 위해 CarDamage 호환 변환은 기본으로 켜져 있습니다.
 - 알 수 없는 UDP 패킷은 파싱하지 않고 그대로 전달합니다.
@@ -95,6 +100,9 @@ HUD에는 속도, 기어, RPM, REV LED, 입력 추적, 타이어/브레이크 �
 | `--game` | `auto` | `auto`, `f1-25`, `generic-udp`, `lmu`, `ace`, `acr` 중 선택 |
 | `--listen` | `20777` | F1 25 UDP를 받는 포트 |
 | `--moza-port` | `22025` | MOZA Pit House로 전달할 포트 |
+| `--input-log` | 없음 | F1 입력 샘플 CSV 누적 파일 |
+| `--corner-log` | 없음 | 완료 랩 구간 요약 CSV 누적 파일 |
+| `--analysis-report` | 없음 | 최신 완료 랩 분석 Markdown 파일 |
 | `--debug` | `false` | 패치 로그와 초당 통계 출력 |
 
 ## 참고 문서
