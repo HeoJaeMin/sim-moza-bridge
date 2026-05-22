@@ -165,7 +165,7 @@ fn draw_dashboard(
     draw_driver_panel(painter, left, state, BLUE, "PLAYER CAR", "BRIDGE INPUT");
     draw_center_panel(painter, center, state, trace, error);
     draw_driver_panel(painter, right, state, YELLOW, "MOZA OUTPUT", "FORWARDING");
-    draw_timeline(painter, timeline, state);
+    draw_lap_progress_panel(painter, timeline, state);
 }
 
 fn draw_background(painter: &egui::Painter, rect: Rect) {
@@ -511,43 +511,69 @@ fn draw_track_map(painter: &egui::Painter, rect: Rect, state: &TelemetryUpdate) 
         );
     }
 
-    let pit_start = pos2(rect.left() + rect.width() * 0.42, rect.bottom() - 34.0);
-    let pit_end = pos2(rect.left() + rect.width() * 0.74, rect.bottom() - 34.0);
-    painter.line_segment(
-        [pit_start, pit_end],
-        Stroke::new(8.0, Color32::from_rgb(126, 146, 165)),
-    );
-    painter.rect_filled(
-        Rect::from_min_size(pit_start + vec2(92.0, -7.0), vec2(88.0, 14.0)),
-        1.0,
-        YELLOW,
-    );
+    let start_label = pos2(rect.left() + rect.width() * 0.18, rect.bottom() - 24.0);
     text(
         painter,
-        pit_end + vec2(14.0, 0.0),
-        Align2::LEFT_CENTER,
-        "DRS / PIT WINDOW",
-        11.0,
+        start_label,
+        Align2::CENTER_CENTER,
+        "START",
+        10.0,
         MUTED,
     );
 }
 
 fn draw_trace_chart(painter: &egui::Painter, rect: Rect, trace: &[InputTracePoint]) {
-    panel_box(painter, rect, "INPUT TRACE", BLUE);
+    panel_box(painter, rect, "INPUT HISTORY", BLUE);
 
-    let plot = rect.shrink2(vec2(18.0, 34.0));
-    for index in 0..6 {
-        let y = plot.top() + plot.height() / 5.0 * index as f32;
+    let summary_top = rect.top() + 40.0;
+    let latest = trace.last().copied();
+    draw_input_stat(
+        painter,
+        pos2(rect.left() + 22.0, summary_top),
+        "THROTTLE",
+        latest.map(|point| point.throttle),
+        BLUE,
+    );
+    draw_input_stat(
+        painter,
+        pos2(rect.left() + 150.0, summary_top),
+        "BRAKE",
+        latest.map(|point| point.brake),
+        YELLOW,
+    );
+    draw_input_stat(
+        painter,
+        pos2(rect.left() + 278.0, summary_top),
+        "REV",
+        latest.map(|point| point.rev),
+        GREEN,
+    );
+    draw_input_stat(
+        painter,
+        pos2(rect.left() + 406.0, summary_top),
+        "STEER",
+        latest.map(|point| point.steer * 2.0 - 1.0),
+        Color32::from_rgb(190, 202, 214),
+    );
+
+    let plot = Rect::from_min_max(
+        pos2(rect.left() + 22.0, rect.top() + 76.0),
+        pos2(rect.right() - 22.0, rect.bottom() - 18.0),
+    );
+    painter.rect_filled(plot, 2.0, Color32::from_rgb(37, 46, 59));
+    painter.rect_stroke(plot, 2.0, Stroke::new(1.0, LINE), StrokeKind::Inside);
+    for index in 1..4 {
+        let y = plot.top() + plot.height() / 4.0 * index as f32;
         painter.line_segment(
             [pos2(plot.left(), y), pos2(plot.right(), y)],
-            Stroke::new(1.0, Color32::from_rgba_premultiplied(255, 255, 255, 16)),
+            Stroke::new(1.0, Color32::from_rgba_premultiplied(210, 225, 240, 20)),
         );
     }
-    for index in 0..10 {
-        let x = plot.left() + plot.width() / 9.0 * index as f32;
+    for index in 1..8 {
+        let x = plot.left() + plot.width() / 8.0 * index as f32;
         painter.line_segment(
             [pos2(x, plot.top()), pos2(x, plot.bottom())],
-            Stroke::new(1.0, Color32::from_rgba_premultiplied(255, 255, 255, 10)),
+            Stroke::new(1.0, Color32::from_rgba_premultiplied(210, 225, 240, 16)),
         );
     }
 
@@ -556,7 +582,7 @@ fn draw_trace_chart(painter: &egui::Painter, rect: Rect, trace: &[InputTracePoin
             painter,
             plot.center(),
             Align2::CENTER_CENTER,
-            "WAITING FOR INPUT TELEMETRY",
+            "NO INPUT PACKETS YET",
             12.0,
             MUTED,
         );
@@ -571,17 +597,6 @@ fn draw_trace_chart(painter: &egui::Painter, rect: Rect, trace: &[InputTracePoin
         plot,
         trace,
         |point| point.steer,
-        Color32::from_rgb(190, 202, 214),
-    );
-
-    let legend_y = rect.top() + 18.0;
-    trace_legend(painter, pos2(rect.right() - 248.0, legend_y), "THR", BLUE);
-    trace_legend(painter, pos2(rect.right() - 184.0, legend_y), "BRK", YELLOW);
-    trace_legend(painter, pos2(rect.right() - 120.0, legend_y), "REV", GREEN);
-    trace_legend(
-        painter,
-        pos2(rect.right() - 56.0, legend_y),
-        "STR",
         Color32::from_rgb(190, 202, 214),
     );
 }
@@ -641,92 +656,111 @@ fn draw_raw_panel(painter: &egui::Painter, rect: Rect, state: &TelemetryUpdate) 
     }
 }
 
-fn draw_timeline(painter: &egui::Painter, rect: Rect, state: &TelemetryUpdate) {
+fn draw_lap_progress_panel(painter: &egui::Painter, rect: Rect, state: &TelemetryUpdate) {
     panel(
         painter,
         rect,
-        "PREDICTIVE TIMELINE",
+        "LAP PROGRESS",
         Color32::from_rgb(150, 170, 185),
     );
 
-    let track = Rect::from_min_max(
-        pos2(rect.left() + 28.0, rect.top() + 56.0),
-        pos2(rect.right() - 28.0, rect.bottom() - 30.0),
-    );
-    painter.line_segment(
-        [
-            pos2(track.left(), track.center().y),
-            pos2(track.right(), track.center().y),
-        ],
-        Stroke::new(1.0, LINE),
-    );
-
+    let progress = telemetry_track_progress(state);
     let current_lap = state
         .lap
         .as_ref()
         .map(|lap| lap.current_lap_num)
-        .unwrap_or(30);
+        .unwrap_or(0);
     let total_laps = state
         .session
         .as_ref()
         .map(|session| session.total_laps)
         .unwrap_or(53)
         .max(1);
-    for lap in 1..=total_laps {
-        let x =
-            track.left() + track.width() * (f32::from(lap) - 1.0) / f32::from(total_laps.max(1));
-        let tick_h = if lap % 5 == 0 { 34.0 } else { 18.0 };
+    let lap_distance = state
+        .lap
+        .as_ref()
+        .map(|lap| lap.lap_distance_m.max(0.0))
+        .unwrap_or(0.0);
+    let track_length = state
+        .session
+        .as_ref()
+        .map(|session| session.track_length_m)
+        .unwrap_or(0);
+
+    let bar = Rect::from_min_max(
+        pos2(rect.left() + 30.0, rect.top() + 62.0),
+        pos2(rect.right() - 30.0, rect.top() + 84.0),
+    );
+    painter.rect_filled(bar, 2.0, Color32::from_rgb(49, 60, 75));
+    painter.rect_filled(
+        Rect::from_min_max(
+            bar.left_top(),
+            pos2(bar.left() + bar.width() * progress, bar.bottom()),
+        ),
+        2.0,
+        BLUE,
+    );
+    painter.rect_stroke(bar, 2.0, Stroke::new(1.0, LINE), StrokeKind::Inside);
+
+    for tick in 0..=10 {
+        let x = bar.left() + bar.width() * tick as f32 / 10.0;
         painter.line_segment(
-            [
-                pos2(x, track.center().y - tick_h / 2.0),
-                pos2(x, track.center().y + tick_h / 2.0),
-            ],
-            Stroke::new(1.0, Color32::from_rgba_premultiplied(200, 215, 230, 48)),
+            [pos2(x, bar.bottom() + 8.0), pos2(x, bar.bottom() + 20.0)],
+            Stroke::new(1.0, Color32::from_rgba_premultiplied(200, 215, 230, 80)),
         );
-        if lap % 5 == 0 || lap == total_laps {
-            text(
-                painter,
-                pos2(x, track.top() - 10.0),
-                Align2::CENTER_CENTER,
-                &lap.to_string(),
-                10.0,
-                MUTED,
-            );
-        }
     }
 
-    let current_x = track.left()
-        + track.width() * f32::from(current_lap.saturating_sub(1)) / f32::from(total_laps);
     triangle(
         painter,
-        pos2(current_x, track.center().y - 24.0),
-        13.0,
-        BLUE,
-    );
-    triangle(
-        painter,
-        pos2(current_x + 8.0, track.center().y + 24.0),
-        13.0,
-        YELLOW,
-    );
-
-    let pit_a = Rect::from_min_max(
-        pos2(track.left() + track.width() * 0.66, track.center().y - 14.0),
-        pos2(track.left() + track.width() * 0.76, track.center().y + 2.0),
-    );
-    let pit_b = Rect::from_min_max(
-        pos2(track.left() + track.width() * 0.63, track.center().y + 8.0),
-        pos2(track.left() + track.width() * 0.74, track.center().y + 24.0),
-    );
-    painter.rect_filled(pit_a, 2.0, BLUE);
-    painter.rect_filled(pit_b, 2.0, YELLOW);
-    text(
-        painter,
-        pos2(pit_a.center().x, pit_a.top() - 10.0),
-        Align2::CENTER_CENTER,
-        "PIT WINDOW",
+        pos2(bar.left() + bar.width() * progress, bar.top() - 10.0),
         10.0,
         BLUE,
+    );
+
+    let metrics_y = rect.bottom() - 28.0;
+    metric_line(
+        painter,
+        pos2(rect.left() + 32.0, metrics_y),
+        "LAP",
+        if current_lap == 0 {
+            "-- / --".to_owned()
+        } else {
+            format!("{current_lap} / {total_laps}")
+        },
+        BLUE,
+    );
+    metric_line(
+        painter,
+        pos2(rect.left() + 210.0, metrics_y),
+        "DISTANCE",
+        if track_length == 0 {
+            "--".to_owned()
+        } else {
+            format!("{lap_distance:.0} / {track_length} m")
+        },
+        TEXT,
+    );
+    metric_line(
+        painter,
+        pos2(rect.left() + 470.0, metrics_y),
+        "CURRENT",
+        state
+            .lap
+            .as_ref()
+            .map(|lap| format_ms(lap.current_lap_time_ms))
+            .unwrap_or_else(|| "--".to_owned()),
+        TEXT,
+    );
+    metric_line(
+        painter,
+        pos2(rect.left() + 690.0, metrics_y),
+        "BEST",
+        state
+            .lap
+            .as_ref()
+            .map(|lap| format_ms(lap.last_lap_time_ms))
+            .unwrap_or_else(|| "--".to_owned()),
+        YELLOW,
     );
 }
 
@@ -1012,6 +1046,46 @@ fn metric_inline(painter: &egui::Painter, pos: Pos2, label: &str, value: String,
     );
 }
 
+fn metric_line(painter: &egui::Painter, pos: Pos2, label: &str, value: String, color: Color32) {
+    text(painter, pos, Align2::LEFT_CENTER, label, 10.0, MUTED);
+    text(
+        painter,
+        pos + vec2(72.0, 0.0),
+        Align2::LEFT_CENTER,
+        &value,
+        16.0,
+        color,
+    );
+}
+
+fn draw_input_stat(
+    painter: &egui::Painter,
+    pos: Pos2,
+    label: &str,
+    value: Option<f32>,
+    color: Color32,
+) {
+    let text_value = match value {
+        Some(value) if label == "STEER" => format!("{:+.0}%", value * 100.0),
+        Some(value) => format!("{:.0}%", value * 100.0),
+        None => "--".to_owned(),
+    };
+    text(painter, pos, Align2::LEFT_CENTER, label, 10.0, MUTED);
+    painter.rect_filled(
+        Rect::from_min_size(pos + vec2(0.0, 16.0), vec2(54.0, 3.0)),
+        1.0,
+        color,
+    );
+    text(
+        painter,
+        pos + vec2(0.0, 34.0),
+        Align2::LEFT_CENTER,
+        &text_value,
+        18.0,
+        TEXT,
+    );
+}
+
 fn draw_trace_series<F>(
     painter: &egui::Painter,
     rect: Rect,
@@ -1031,18 +1105,6 @@ fn draw_trace_series<F>(
     for pair in points.windows(2) {
         painter.line_segment([pair[0], pair[1]], Stroke::new(2.0, color));
     }
-}
-
-fn trace_legend(painter: &egui::Painter, pos: Pos2, label: &str, color: Color32) {
-    painter.rect_filled(Rect::from_min_size(pos, vec2(18.0, 3.0)), 1.0, color);
-    text(
-        painter,
-        pos + vec2(23.0, 1.0),
-        Align2::LEFT_CENTER,
-        label,
-        10.0,
-        MUTED,
-    );
 }
 
 fn telemetry_track_progress(state: &TelemetryUpdate) -> f32 {
