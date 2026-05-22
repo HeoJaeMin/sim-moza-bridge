@@ -10,7 +10,31 @@ use crate::logging::{CornerLogger, InputLogger, write_analysis_report};
 
 const UDP_BUFFER_SIZE: usize = 65_535;
 
+#[cfg_attr(any(target_os = "macos", target_os = "windows"), allow(dead_code))]
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+enum HudLaunch {
+    Web,
+    Native,
+}
+
+#[cfg_attr(any(target_os = "macos", target_os = "windows"), allow(dead_code))]
 pub fn start_udp_bridge(config: BridgeConfig) -> Result<(), String> {
+    let hud = start_optional_hud(&config)?;
+    run_udp_bridge(config, hud, HudLaunch::Web)
+}
+
+pub fn start_udp_bridge_with_hud(
+    config: BridgeConfig,
+    hud: Option<HudHandle>,
+) -> Result<(), String> {
+    run_udp_bridge(config, hud, HudLaunch::Native)
+}
+
+fn run_udp_bridge(
+    config: BridgeConfig,
+    hud: Option<HudHandle>,
+    hud_launch: HudLaunch,
+) -> Result<(), String> {
     let receiver = UdpSocket::bind(format!("{}:{}", config.listen_host, config.listen_port))
         .map_err(|error| format!("bind failed: {error}"))?;
     let sender =
@@ -38,7 +62,6 @@ pub fn start_udp_bridge(config: BridgeConfig) -> Result<(), String> {
         None
     };
     let mut analysis_report = config.analysis_report.clone();
-    let hud = start_optional_hud(&config)?;
     let mut last_stats = Instant::now();
     let mut buffer = vec![0_u8; UDP_BUFFER_SIZE];
 
@@ -71,13 +94,7 @@ pub fn start_udp_bridge(config: BridgeConfig) -> Result<(), String> {
     if let Some(path) = &config.analysis_report {
         println!("analysis report enabled: {path}");
     }
-    if let Some(port) = config.hud_http_port {
-        let hud_url = format!("http://{}:{port}", config.hud_host);
-        println!("HUD: {hud_url}");
-        if let Err(error) = open_browser(&hud_url) {
-            eprintln!("[warning] failed to open HUD in browser: {error}");
-        }
-    }
+    print_optional_hud(&config, hud_launch, hud.is_some());
 
     loop {
         let (size, _) = receiver
@@ -168,6 +185,7 @@ pub fn start_udp_bridge(config: BridgeConfig) -> Result<(), String> {
     }
 }
 
+#[cfg_attr(any(target_os = "macos", target_os = "windows"), allow(dead_code))]
 fn start_optional_hud(config: &BridgeConfig) -> Result<Option<HudHandle>, String> {
     config
         .hud_http_port
@@ -177,6 +195,25 @@ fn start_optional_hud(config: &BridgeConfig) -> Result<Option<HudHandle>, String
 
 fn is_loopback_host(host: &str) -> bool {
     matches!(host, "127.0.0.1" | "localhost" | "::1")
+}
+
+fn print_optional_hud(config: &BridgeConfig, launch: HudLaunch, enabled: bool) {
+    if !enabled {
+        return;
+    }
+
+    match launch {
+        HudLaunch::Native => println!("HUD: native window"),
+        HudLaunch::Web => {
+            if let Some(port) = config.hud_http_port {
+                let hud_url = format!("http://{}:{port}", config.hud_host);
+                println!("HUD: {hud_url}");
+                if let Err(error) = open_browser(&hud_url) {
+                    eprintln!("[warning] failed to open HUD in browser: {error}");
+                }
+            }
+        }
+    }
 }
 
 fn open_browser(url: &str) -> Result<(), String> {

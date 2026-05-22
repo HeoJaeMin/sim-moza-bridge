@@ -26,7 +26,31 @@ enum RuntimeSource {
     Ace,
 }
 
+#[cfg_attr(any(target_os = "macos", target_os = "windows"), allow(dead_code))]
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+enum HudLaunch {
+    Web,
+    Native,
+}
+
+#[cfg_attr(any(target_os = "macos", target_os = "windows"), allow(dead_code))]
 pub fn start_auto_runtime(config: BridgeConfig) -> Result<(), String> {
+    let hud = start_optional_hud(&config)?;
+    run_auto_runtime(config, hud, HudLaunch::Web)
+}
+
+pub fn start_auto_runtime_with_hud(
+    config: BridgeConfig,
+    hud: Option<HudHandle>,
+) -> Result<(), String> {
+    run_auto_runtime(config, hud, HudLaunch::Native)
+}
+
+fn run_auto_runtime(
+    config: BridgeConfig,
+    hud: Option<HudHandle>,
+    hud_launch: HudLaunch,
+) -> Result<(), String> {
     let receiver = UdpSocket::bind(format!("{}:{}", config.listen_host, config.listen_port))
         .map_err(|error| format!("bind failed: {error}"))?;
     receiver
@@ -41,7 +65,6 @@ pub fn start_auto_runtime(config: BridgeConfig) -> Result<(), String> {
         config.fix_tyre_wear_order,
         config.f1_24_car_damage_compat,
     );
-    let hud = start_optional_hud(&config)?;
     let mut buffer = vec![0_u8; UDP_BUFFER_SIZE];
     let mut source = RuntimeSource::Waiting;
     let mut frame_identifier = 0_u32;
@@ -71,7 +94,7 @@ pub fn start_auto_runtime(config: BridgeConfig) -> Result<(), String> {
             config.listen_host
         );
     }
-    print_optional_hud(&config);
+    print_optional_hud(&config, hud_launch, hud.is_some());
 
     loop {
         while let Some(update) = receive_udp_update(
@@ -241,6 +264,7 @@ fn warn_periodically(last_warning: &mut Instant, message: &str) {
     }
 }
 
+#[cfg_attr(any(target_os = "macos", target_os = "windows"), allow(dead_code))]
 fn start_optional_hud(config: &BridgeConfig) -> Result<Option<HudHandle>, String> {
     config
         .hud_http_port
@@ -248,12 +272,21 @@ fn start_optional_hud(config: &BridgeConfig) -> Result<Option<HudHandle>, String
         .transpose()
 }
 
-fn print_optional_hud(config: &BridgeConfig) {
-    if let Some(port) = config.hud_http_port {
-        let hud_url = format!("http://{}:{port}", config.hud_host);
-        println!("HUD: {hud_url}");
-        if let Err(error) = open_browser(&hud_url) {
-            eprintln!("[warning] failed to open HUD in browser: {error}");
+fn print_optional_hud(config: &BridgeConfig, launch: HudLaunch, enabled: bool) {
+    if !enabled {
+        return;
+    }
+
+    match launch {
+        HudLaunch::Native => println!("HUD: native window"),
+        HudLaunch::Web => {
+            if let Some(port) = config.hud_http_port {
+                let hud_url = format!("http://{}:{port}", config.hud_host);
+                println!("HUD: {hud_url}");
+                if let Err(error) = open_browser(&hud_url) {
+                    eprintln!("[warning] failed to open HUD in browser: {error}");
+                }
+            }
         }
     }
 }

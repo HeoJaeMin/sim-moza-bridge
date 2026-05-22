@@ -70,11 +70,7 @@ cargo run -- --listen 20777 --moza-port 22025
 cargo run -- --debug
 ```
 
-브리지가 시작되면 로컬 HUD가 기본 브라우저로 자동 열립니다.
-
-```text
-http://127.0.0.1:8765
-```
+브리지가 시작되면 로컬 HUD가 Rust native 창으로 열립니다. macOS에서는 macOS 창, Windows에서는 Windows 창으로 실행되며 브라우저를 열지 않습니다.
 
 HUD에는 속도, 기어, RPM, REV LED, 입력 추적, 타이어/브레이크 상태, 앞차/뒤차/선두 gap, 연료, ERS, 손상 패널이 기본으로 표시됩니다.
 
@@ -84,7 +80,8 @@ HUD에는 속도, 기어, RPM, REV LED, 입력 추적, 타이어/브레이크 �
 
 - `127.0.0.1:20777`에서 F1 25 UDP를 받습니다.
 - `127.0.0.1:22025`로 MOZA Pit House에 전달합니다.
-- `127.0.0.1:8765`에 브라우저 HUD를 띄우고 기본 브라우저로 엽니다.
+- macOS/Windows에서는 브리지 프로세스 안에서 Rust native HUD 창을 띄웁니다.
+- 그 외 플랫폼에서는 `127.0.0.1:8765` HTTP HUD를 fallback으로 띄우고 기본 브라우저로 엽니다.
 - F1 25 패킷이 감지되면 `PacketCarDamageData`를 MOZA가 읽기 쉬운 F1 24 호환 레이아웃으로 자동 변환합니다.
 - MOZA 대시의 `TyreWear*` 값이 `100`에 고정되는 문제를 피하기 위해 CarDamage 호환 변환은 기본으로 켜져 있습니다.
 - 알 수 없는 UDP 패킷은 파싱하지 않고 그대로 전달합니다.

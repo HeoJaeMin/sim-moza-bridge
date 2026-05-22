@@ -22,6 +22,13 @@ impl HudHandle {
             state.apply(update);
         }
     }
+
+    pub fn snapshot(&self) -> TelemetryUpdate {
+        self.state
+            .lock()
+            .map(|state| state.snapshot())
+            .unwrap_or_default()
+    }
 }
 
 #[derive(Clone, Debug, Default)]
@@ -85,13 +92,36 @@ impl HudState {
                 .unwrap_or_else(|| "null".to_owned())
         )
     }
+
+    fn snapshot(&self) -> TelemetryUpdate {
+        TelemetryUpdate {
+            input: self.input.clone(),
+            lap: self.lap.clone(),
+            session: self.session.clone(),
+            damage: self.damage.clone(),
+            status: self.status.clone(),
+        }
+    }
+}
+
+pub fn new_hud_handle() -> HudHandle {
+    HudHandle {
+        state: Arc::new(Mutex::new(HudState::default())),
+    }
 }
 
 pub fn start_hud_server(host: &str, port: u16) -> Result<HudHandle, String> {
+    start_hud_server_with_handle(host, port, new_hud_handle())
+}
+
+pub fn start_hud_server_with_handle(
+    host: &str,
+    port: u16,
+    handle: HudHandle,
+) -> Result<HudHandle, String> {
     let listener = TcpListener::bind(format!("{host}:{port}"))
         .map_err(|error| format!("HUD bind failed: {error}"))?;
-    let state = Arc::new(Mutex::new(HudState::default()));
-    let thread_state = Arc::clone(&state);
+    let thread_state = Arc::clone(&handle.state);
 
     thread::spawn(move || {
         for stream in listener.incoming() {
@@ -109,7 +139,7 @@ pub fn start_hud_server(host: &str, port: u16) -> Result<HudHandle, String> {
         }
     });
 
-    Ok(HudHandle { state })
+    Ok(handle)
 }
 
 fn handle_connection(mut stream: TcpStream, state: Arc<Mutex<HudState>>) -> Result<(), String> {
