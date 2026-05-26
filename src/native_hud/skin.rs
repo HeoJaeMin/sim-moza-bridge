@@ -146,6 +146,7 @@ struct TelemetryFrame {
 
 impl TelemetryFrame {
     fn from_update(state: &TelemetryUpdate, error: Option<&str>) -> Self {
+        let sample = Self::sample(state.is_empty() && error.is_none(), error);
         let input = state.input.as_ref();
         let lap = state.lap.as_ref();
         let status = state.status.as_ref();
@@ -153,16 +154,21 @@ impl TelemetryFrame {
         let waiting = state.is_empty() && error.is_none();
 
         let max_rpm = status.map(|status| status.max_rpm.max(1)).unwrap_or(15_000);
-        let rpm = input.map(|input| input.rpm).unwrap_or(0).min(max_rpm);
+        let rpm = input
+            .map(|input| input.rpm)
+            .unwrap_or((sample.rpm_ratio * max_rpm as f32) as u16)
+            .min(max_rpm);
         let lap_total = state
             .session
             .as_ref()
             .map(|session| session.total_laps.max(1).to_string())
-            .unwrap_or_else(|| "--".to_owned());
-        let battery_pct = status.map(StatusSample::ers_percent).unwrap_or(0.0);
+            .unwrap_or_else(|| sample.lap_total.clone());
+        let battery_pct = status
+            .map(StatusSample::ers_percent)
+            .unwrap_or(sample.battery_pct);
         let ers_deploy = status
             .map(|status| status.ers_deployed_this_lap / 4_000_000.0)
-            .unwrap_or(0.0)
+            .unwrap_or(sample.ers_deploy)
             .clamp(0.0, 1.0);
 
         Self {
@@ -170,33 +176,73 @@ impl TelemetryFrame {
             error: error.map(ToOwned::to_owned),
             speed: input
                 .map(|input| input.speed_kmh.to_string())
-                .unwrap_or_else(|| "--".to_owned()),
+                .unwrap_or(sample.speed),
             gear: input
                 .map(|input| gear_label(input.gear))
-                .unwrap_or_else(|| "-".to_owned()),
-            rpm: if rpm == 0 {
-                "----".to_owned()
-            } else {
-                rpm.to_string()
-            },
+                .unwrap_or(sample.gear),
+            rpm: rpm.to_string(),
             rpm_ratio: rpm as f32 / max_rpm as f32,
             rev_ratio: input
                 .map(|input| f32::from(input.rev_lights_percent) / 100.0)
-                .unwrap_or(0.0),
+                .unwrap_or(sample.rev_ratio),
             lap_current: lap
                 .map(|lap| lap.current_lap_num.to_string())
-                .unwrap_or_else(|| "--".to_owned()),
+                .unwrap_or(sample.lap_current),
             lap_total,
-            current_lap: lap_time(lap, |lap| lap.current_lap_time_ms),
-            best_lap: lap_time(lap, |lap| lap.last_lap_time_ms),
+            current_lap: lap_time(lap, |lap| lap.current_lap_time_ms, &sample.current_lap),
+            best_lap: lap_time(lap, |lap| lap.last_lap_time_ms, &sample.best_lap),
             delta: lap
                 .and_then(|lap| lap.delta_to_car_in_front_ms)
                 .map(format_delta_ms)
-                .unwrap_or_else(|| "--.---".to_owned()),
+                .unwrap_or(sample.delta),
             battery_pct,
             ers_deploy,
-            ers_harvest_pct: (1.0 - ers_deploy).clamp(0.0, 1.0) * 100.0,
-            tyres: tyre_displays(input, damage),
+            ers_harvest_pct: status
+                .map(|_| (1.0 - ers_deploy).clamp(0.0, 1.0) * 100.0)
+                .unwrap_or(sample.ers_harvest_pct),
+            tyres: tyre_displays(input, damage, sample.tyres),
+        }
+    }
+
+    fn sample(waiting: bool, error: Option<&str>) -> Self {
+        Self {
+            waiting,
+            error: error.map(ToOwned::to_owned),
+            speed: "278".to_owned(),
+            gear: "7".to_owned(),
+            rpm: "11280".to_owned(),
+            rpm_ratio: 0.752,
+            rev_ratio: 0.88,
+            lap_current: "18".to_owned(),
+            lap_total: "52".to_owned(),
+            current_lap: "1:24.705".to_owned(),
+            best_lap: "1:23.456".to_owned(),
+            delta: "-0.256".to_owned(),
+            battery_pct: 56.0,
+            ers_deploy: 0.60,
+            ers_harvest_pct: 62.0,
+            tyres: [
+                TyreDisplay {
+                    label: "RL",
+                    temp: Some(93),
+                    wear_pct: Some(88.0),
+                },
+                TyreDisplay {
+                    label: "RR",
+                    temp: Some(95),
+                    wear_pct: Some(90.0),
+                },
+                TyreDisplay {
+                    label: "FL",
+                    temp: Some(98),
+                    wear_pct: Some(94.0),
+                },
+                TyreDisplay {
+                    label: "FR",
+                    temp: Some(97),
+                    wear_pct: Some(91.0),
+                },
+            ],
         }
     }
 }
@@ -263,25 +309,26 @@ fn paint_shell(painter: &egui::Painter, rect: Rect, scale: f32) {
         Stroke::new(0.5 * scale, Color32::from_rgb(24, 29, 30)),
     ));
 
-    let top_glow = Rect::from_min_max(
-        pos2(
-            rect.left() + rect.width() * 0.05,
-            rect.top() + rect.height() * 0.07,
+    painter.line_segment(
+        [
+            pos2(
+                rect.left() + rect.width() * 0.09,
+                rect.top() + rect.height() * 0.085,
+            ),
+            pos2(
+                rect.right() - rect.width() * 0.09,
+                rect.top() + rect.height() * 0.085,
+            ),
+        ],
+        Stroke::new(
+            0.7 * scale,
+            Color32::from_rgba_premultiplied(190, 100, 15, 58),
         ),
-        pos2(
-            rect.right() - rect.width() * 0.05,
-            rect.top() + rect.height() * 0.11,
-        ),
-    );
-    painter.rect_filled(
-        top_glow,
-        2.0 * scale,
-        Color32::from_rgba_premultiplied(190, 100, 15, 24),
     );
 }
 
 fn paint_texture(painter: &egui::Painter, rect: Rect, scale: f32) {
-    let diagonal = Color32::from_rgba_premultiplied(42, 52, 54, 30);
+    let diagonal = Color32::from_rgba_premultiplied(42, 52, 54, 18);
     for index in -5..26 {
         let x = rect.left() + index as f32 * 58.0 * scale;
         painter.line_segment(
@@ -289,16 +336,7 @@ fn paint_texture(painter: &egui::Painter, rect: Rect, scale: f32) {
                 pos2(x, rect.top() + rect.height() * 0.02),
                 pos2(x + rect.height() * 0.55, rect.bottom()),
             ],
-            Stroke::new(0.6 * scale, diagonal),
-        );
-    }
-
-    let center = rect.center();
-    for radius in [300.0, 220.0, 150.0] {
-        painter.circle_filled(
-            center,
-            radius * scale,
-            Color32::from_rgba_premultiplied(10, 17, 18, 18),
+            Stroke::new(0.45 * scale, diagonal),
         );
     }
 }
@@ -748,13 +786,13 @@ fn paint_panel_shape(painter: &egui::Painter, points: Vec<Pos2>, scale: f32) {
     ));
     painter.add(egui::Shape::closed_line(
         points,
-        Stroke::new(0.9 * scale, LINE_HOT),
+        Stroke::new(0.55 * scale, LINE_HOT),
     ));
 }
 
 fn paint_center_wake(painter: &egui::Painter, rect: Rect, scale: f32) {
     let center = rect.center();
-    let color = Color32::from_rgba_premultiplied(102, 44, 0, 70);
+    let color = Color32::from_rgba_premultiplied(102, 44, 0, 38);
     for index in 0..9 {
         let y_offset = (index as f32 - 4.0) * 10.0 * scale;
         painter.line_segment(
@@ -1078,37 +1116,45 @@ fn rev_light_color(index: usize) -> Color32 {
     }
 }
 
-fn tyre_displays(input: Option<&InputSample>, damage: Option<&DamageSample>) -> [TyreDisplay; 4] {
+fn tyre_displays(
+    input: Option<&InputSample>,
+    damage: Option<&DamageSample>,
+    fallback: [TyreDisplay; 4],
+) -> [TyreDisplay; 4] {
     let temps = input.map(|input| input.tyre_surface_temps_c);
     let wear = damage.map(|damage| damage.tyre_wear);
     [
         TyreDisplay {
             label: "RL",
-            temp: temps.map(|temps| temps.rl),
-            wear_pct: wear.map(|wear| wear.rl),
+            temp: temps.map(|temps| temps.rl).or(fallback[0].temp),
+            wear_pct: wear.map(|wear| wear.rl).or(fallback[0].wear_pct),
         },
         TyreDisplay {
             label: "RR",
-            temp: temps.map(|temps| temps.rr),
-            wear_pct: wear.map(|wear| wear.rr),
+            temp: temps.map(|temps| temps.rr).or(fallback[1].temp),
+            wear_pct: wear.map(|wear| wear.rr).or(fallback[1].wear_pct),
         },
         TyreDisplay {
             label: "FL",
-            temp: temps.map(|temps| temps.fl),
-            wear_pct: wear.map(|wear| wear.fl),
+            temp: temps.map(|temps| temps.fl).or(fallback[2].temp),
+            wear_pct: wear.map(|wear| wear.fl).or(fallback[2].wear_pct),
         },
         TyreDisplay {
             label: "FR",
-            temp: temps.map(|temps| temps.fr),
-            wear_pct: wear.map(|wear| wear.fr),
+            temp: temps.map(|temps| temps.fr).or(fallback[3].temp),
+            wear_pct: wear.map(|wear| wear.fr).or(fallback[3].wear_pct),
         },
     ]
 }
 
-fn lap_time(lap: Option<&LapSample>, read: impl FnOnce(&LapSample) -> u32) -> String {
+fn lap_time(
+    lap: Option<&LapSample>,
+    read: impl FnOnce(&LapSample) -> u32,
+    fallback: &str,
+) -> String {
     lap.map(read)
         .map(format_ms)
-        .unwrap_or_else(|| "--:--.---".to_owned())
+        .unwrap_or_else(|| fallback.to_owned())
 }
 
 fn fit_aspect(rect: Rect, aspect: f32) -> Rect {
