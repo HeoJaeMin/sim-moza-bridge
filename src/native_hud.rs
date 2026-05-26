@@ -28,8 +28,8 @@ pub fn run(config: BridgeConfig) -> Result<(), String> {
     let options = eframe::NativeOptions {
         viewport: egui::ViewportBuilder::default()
             .with_title("Sim MOZA Bridge")
-            .with_inner_size([1280.0, 680.0])
-            .with_min_inner_size([860.0, 450.0]),
+            .with_inner_size([1280.0, 720.0])
+            .with_min_inner_size([900.0, 520.0]),
         ..Default::default()
     };
 

@@ -8,8 +8,9 @@ pub const APP_BG: Color32 = Color32::from_rgb(2, 3, 4);
 pub const ACCENT: Color32 = Color32::from_rgb(255, 142, 14);
 
 const SHELL: Color32 = Color32::from_rgb(3, 7, 8);
-const PANEL: Color32 = Color32::from_rgba_premultiplied(5, 8, 9, 185);
-const LINE_HOT: Color32 = Color32::from_rgba_premultiplied(194, 82, 0, 185);
+const PANEL: Color32 = Color32::from_rgba_premultiplied(4, 8, 9, 192);
+const LINE_HOT: Color32 = Color32::from_rgba_premultiplied(194, 82, 0, 118);
+const EDGE_COLD: Color32 = Color32::from_rgba_premultiplied(132, 146, 148, 74);
 const TEXT: Color32 = Color32::from_rgb(235, 238, 238);
 const TEXT_DIM: Color32 = Color32::from_rgb(145, 151, 153);
 const GREEN: Color32 = Color32::from_rgb(23, 224, 48);
@@ -67,7 +68,7 @@ impl HudLayout {
             (rect.width() * 0.030).clamp(16.0, 46.0),
             (rect.height() * 0.070).clamp(18.0, 42.0),
         );
-        let shell = fit_aspect(rect.shrink2(margin), 2.18);
+        let shell = fit_aspect(rect.shrink2(margin), 1.78);
         let scale = (shell.width() / 1620.0).clamp(0.56, 1.15);
         let content = shell.shrink2(vec2(shell.width() * 0.050, shell.height() * 0.060));
 
@@ -140,6 +141,7 @@ struct TelemetryFrame {
     delta: String,
     battery_pct: f32,
     ers_deploy: f32,
+    ers_mode: String,
     ers_harvest_pct: f32,
     tyres: [TyreDisplay; 4],
 }
@@ -197,6 +199,9 @@ impl TelemetryFrame {
                 .unwrap_or(sample.delta),
             battery_pct,
             ers_deploy,
+            ers_mode: status
+                .map(|status| status.ers_deploy_mode.to_string())
+                .unwrap_or(sample.ers_mode),
             ers_harvest_pct: status
                 .map(|_| (1.0 - ers_deploy).clamp(0.0, 1.0) * 100.0)
                 .unwrap_or(sample.ers_harvest_pct),
@@ -212,7 +217,7 @@ impl TelemetryFrame {
             gear: "7".to_owned(),
             rpm: "11280".to_owned(),
             rpm_ratio: 0.752,
-            rev_ratio: 0.88,
+            rev_ratio: 1.0,
             lap_current: "18".to_owned(),
             lap_total: "52".to_owned(),
             current_lap: "1:24.705".to_owned(),
@@ -220,6 +225,7 @@ impl TelemetryFrame {
             delta: "-0.256".to_owned(),
             battery_pct: 56.0,
             ers_deploy: 0.60,
+            ers_mode: "4".to_owned(),
             ers_harvest_pct: 62.0,
             tyres: [
                 TyreDisplay {
@@ -295,13 +301,34 @@ impl<'a> DynamicDisplay<'a> {
 
 fn paint_shell(painter: &egui::Painter, rect: Rect, scale: f32) {
     let shape = shell_points(rect, scale);
+    for layer in 0..4 {
+        let offset = 10.0 * scale + layer as f32 * 4.0 * scale;
+        let alpha = 56_u8.saturating_sub(layer as u8 * 11);
+        painter.add(egui::Shape::convex_polygon(
+            offset_points(&shape, vec2(0.0, offset)),
+            Color32::from_rgba_premultiplied(0, 0, 0, alpha),
+            Stroke::NONE,
+        ));
+    }
+
     painter.add(egui::Shape::convex_polygon(
         shape.clone(),
         SHELL,
         Stroke::NONE,
     ));
     painter.add(egui::Shape::closed_line(
-        shape,
+        offset_points(&shape, vec2(0.0, -1.2 * scale)),
+        Stroke::new(
+            1.1 * scale,
+            Color32::from_rgba_premultiplied(170, 178, 178, 72),
+        ),
+    ));
+    painter.add(egui::Shape::closed_line(
+        offset_points(&shape, vec2(0.0, 2.4 * scale)),
+        Stroke::new(2.0 * scale, Color32::from_rgba_premultiplied(0, 0, 0, 155)),
+    ));
+    painter.add(egui::Shape::closed_line(
+        shape.clone(),
         Stroke::new(1.4 * scale, Color32::from_rgb(82, 86, 86)),
     ));
     painter.add(egui::Shape::closed_line(
@@ -325,18 +352,50 @@ fn paint_shell(painter: &egui::Painter, rect: Rect, scale: f32) {
             Color32::from_rgba_premultiplied(190, 100, 15, 58),
         ),
     );
+
+    let top_sheen = Rect::from_min_max(
+        pos2(
+            rect.left() + rect.width() * 0.10,
+            rect.top() + rect.height() * 0.065,
+        ),
+        pos2(
+            rect.right() - rect.width() * 0.10,
+            rect.top() + rect.height() * 0.085,
+        ),
+    );
+    painter.rect_filled(
+        top_sheen,
+        2.0 * scale,
+        Color32::from_rgba_premultiplied(255, 255, 255, 12),
+    );
 }
 
 fn paint_texture(painter: &egui::Painter, rect: Rect, scale: f32) {
-    let diagonal = Color32::from_rgba_premultiplied(42, 52, 54, 18);
-    for index in -5..26 {
-        let x = rect.left() + index as f32 * 58.0 * scale;
+    paint_vertical_gradient(
+        painter,
+        rect,
+        Color32::from_rgba_premultiplied(16, 24, 24, 84),
+        Color32::from_rgba_premultiplied(0, 0, 0, 112),
+    );
+    paint_vertical_gradient(
+        painter,
+        Rect::from_min_max(rect.left_top(), pos2(rect.right(), rect.center().y)),
+        Color32::from_rgba_premultiplied(255, 255, 255, 10),
+        Color32::TRANSPARENT,
+    );
+
+    let diagonal = Color32::from_rgba_premultiplied(55, 65, 66, 9);
+    for index in -4..22 {
+        let x = rect.left() + index as f32 * 66.0 * scale;
         painter.line_segment(
             [
-                pos2(x, rect.top() + rect.height() * 0.02),
-                pos2(x + rect.height() * 0.55, rect.bottom()),
+                pos2(x, rect.top() + rect.height() * 0.08),
+                pos2(
+                    x + rect.height() * 0.44,
+                    rect.bottom() - rect.height() * 0.08,
+                ),
             ],
-            Stroke::new(0.45 * scale, diagonal),
+            Stroke::new(0.35 * scale, diagonal),
         );
     }
 }
@@ -362,8 +421,8 @@ fn paint_section_backplates(painter: &egui::Painter, layout: &HudLayout) {
 
 fn paint_rev_lights(painter: &egui::Painter, rect: Rect, rev_ratio: f32, scale: f32) {
     let count = 16;
-    let radius = (9.0 * scale).clamp(5.0, 10.5);
-    let gap = 38.0 * scale;
+    let radius = (6.8 * scale).clamp(4.2, 8.2);
+    let gap = 32.0 * scale;
     let total = gap * (count - 1) as f32;
     let start = rect.center().x - total / 2.0;
     let active = (rev_ratio.clamp(0.0, 1.0) * count as f32).round() as usize;
@@ -372,26 +431,32 @@ fn paint_rev_lights(painter: &egui::Painter, rect: Rect, rev_ratio: f32, scale: 
         let color = rev_light_color(index);
         let center = pos2(
             start + gap * index as f32,
-            rect.top() + rect.height() * 0.15,
+            rect.top() + rect.height() * 0.13,
         );
-        painter.circle_filled(
-            center,
-            radius * 1.85,
-            Color32::from_rgba_premultiplied(color.r(), color.g(), color.b(), 26),
-        );
-        painter.circle_filled(center, radius * 1.20, Color32::from_rgb(8, 10, 10));
         let lit = index < active;
         let fill = if lit {
             color
         } else {
-            Color32::from_rgb(30, 36, 36)
+            Color32::from_rgb(22, 27, 27)
         };
-        painter.circle_filled(center, radius, fill);
+        painter.circle_filled(
+            center + vec2(0.0, 1.6 * scale),
+            radius * 1.45,
+            Color32::from_rgba_premultiplied(0, 0, 0, 210),
+        );
         if lit {
             painter.circle_filled(
                 center,
-                radius * 0.42,
-                Color32::from_rgba_premultiplied(255, 255, 255, 95),
+                radius * 2.55,
+                Color32::from_rgba_premultiplied(color.r(), color.g(), color.b(), 30),
+            );
+        }
+        painter.circle_filled(center, radius, fill);
+        if lit {
+            painter.circle_filled(
+                center - vec2(radius * 0.25, radius * 0.28),
+                radius * 0.28,
+                Color32::from_rgba_premultiplied(255, 255, 255, 130),
             );
         }
     }
@@ -401,25 +466,30 @@ fn paint_rpm_scale(painter: &egui::Painter, rect: Rect, rpm_ratio: f32, scale: f
     let bar = Rect::from_min_max(
         pos2(
             rect.left() + rect.width() * 0.055,
-            rect.top() + rect.height() * 0.40,
+            rect.top() + rect.height() * 0.39,
         ),
         pos2(
             rect.right() - rect.width() * 0.055,
-            rect.top() + rect.height() * 0.55,
+            rect.top() + rect.height() * 0.50,
         ),
     );
     let segments = 96;
     let active = (rpm_ratio.clamp(0.0, 1.0) * segments as f32).round() as usize;
     let gap = 1.0 * scale;
     let segment_w = (bar.width() - gap * (segments - 1) as f32) / segments as f32;
+    painter.rect_filled(
+        bar.expand2(vec2(2.0 * scale, 7.0 * scale)),
+        3.0 * scale,
+        Color32::from_rgba_premultiplied(0, 0, 0, 135),
+    );
 
     for index in 0..segments {
         let t = index as f32 / (segments - 1) as f32;
         let x = bar.left() + index as f32 * (segment_w + gap);
-        let top_lift = (t - 0.5).abs() * 14.0 * scale;
+        let curve = (1.0 - (2.0 * t - 1.0).powi(2)) * 13.0 * scale;
         let segment = Rect::from_min_size(
-            pos2(x, bar.top() - top_lift),
-            vec2(segment_w, bar.height() + top_lift),
+            pos2(x, bar.top() - curve),
+            vec2(segment_w, bar.height() + curve * 0.35),
         );
         let color = rpm_segment_color(t, index < active);
         let skew = 6.0 * scale;
@@ -433,18 +503,41 @@ fn paint_rpm_scale(painter: &egui::Painter, rect: Rect, rpm_ratio: f32, scale: f
             color,
             Stroke::NONE,
         ));
+        if index < active {
+            painter.line_segment(
+                [
+                    pos2(
+                        segment.left() + skew + 1.2 * scale,
+                        segment.top() + 1.0 * scale,
+                    ),
+                    pos2(
+                        segment.right() + skew - 1.2 * scale,
+                        segment.top() + 1.0 * scale,
+                    ),
+                ],
+                Stroke::new(
+                    0.45 * scale,
+                    Color32::from_rgba_premultiplied(255, 255, 255, 74),
+                ),
+            );
+        }
     }
 
     for tick in 0..=15 {
         let x = bar.left() + bar.width() * tick as f32 / 15.0;
+        let t = tick as f32 / 15.0;
+        let curve = (1.0 - (2.0 * t - 1.0).powi(2)) * 13.0 * scale;
         let number_color = if tick >= 11 { AMBER } else { TEXT };
         painter.line_segment(
-            [pos2(x, bar.bottom()), pos2(x, bar.bottom() + 15.0 * scale)],
+            [
+                pos2(x, bar.bottom() - curve * 0.20),
+                pos2(x, bar.bottom() + 14.0 * scale),
+            ],
             Stroke::new(0.8 * scale, Color32::from_rgb(155, 160, 160)),
         );
         draw_number(
             painter,
-            pos2(x, bar.bottom() + 30.0 * scale),
+            pos2(x, bar.bottom() + 29.0 * scale),
             Align2::CENTER_CENTER,
             &tick.to_string(),
             18.0 * scale,
@@ -454,10 +547,10 @@ fn paint_rpm_scale(painter: &egui::Painter, rect: Rect, rpm_ratio: f32, scale: f
 
     draw_label(
         painter,
-        pos2(rect.center().x, rect.bottom() - 4.0 * scale),
+        pos2(rect.center().x, rect.bottom() - 7.0 * scale),
         Align2::CENTER_CENTER,
         "RPM x1000",
-        13.0 * scale,
+        11.5 * scale,
         TEXT_DIM,
     );
 }
@@ -515,7 +608,6 @@ fn paint_speed_panel(painter: &egui::Painter, rect: Rect, frame: &TelemetryFrame
 }
 
 fn paint_gear_panel(painter: &egui::Painter, rect: Rect, frame: &TelemetryFrame, scale: f32) {
-    paint_center_wake(painter, rect, scale);
     draw_glow_number(
         painter,
         pos2(rect.center().x, rect.center().y - 8.0 * scale),
@@ -770,19 +862,25 @@ fn paint_bottom_panel(painter: &egui::Painter, rect: Rect, direction: PanelDirec
 }
 
 fn paint_panel_shape(painter: &egui::Painter, points: Vec<Pos2>, scale: f32) {
-    let shadow = points
-        .iter()
-        .map(|point| *point + vec2(0.0, 4.0 * scale))
-        .collect::<Vec<_>>();
-    painter.add(egui::Shape::convex_polygon(
-        shadow,
-        Color32::from_rgba_premultiplied(0, 0, 0, 110),
-        Stroke::NONE,
-    ));
+    for layer in 0..3 {
+        painter.add(egui::Shape::convex_polygon(
+            offset_points(&points, vec2(0.0, (4.0 + layer as f32 * 3.0) * scale)),
+            Color32::from_rgba_premultiplied(0, 0, 0, 70_u8.saturating_sub(layer as u8 * 18)),
+            Stroke::NONE,
+        ));
+    }
     painter.add(egui::Shape::convex_polygon(
         points.clone(),
         PANEL,
         Stroke::NONE,
+    ));
+    painter.add(egui::Shape::closed_line(
+        offset_points(&points, vec2(0.0, -scale)),
+        Stroke::new(0.65 * scale, EDGE_COLD),
+    ));
+    painter.add(egui::Shape::closed_line(
+        offset_points(&points, vec2(0.0, 2.0 * scale)),
+        Stroke::new(1.0 * scale, Color32::from_rgba_premultiplied(0, 0, 0, 138)),
     ));
     painter.add(egui::Shape::closed_line(
         points,
@@ -792,22 +890,22 @@ fn paint_panel_shape(painter: &egui::Painter, points: Vec<Pos2>, scale: f32) {
 
 fn paint_center_wake(painter: &egui::Painter, rect: Rect, scale: f32) {
     let center = rect.center();
-    let color = Color32::from_rgba_premultiplied(102, 44, 0, 38);
-    for index in 0..9 {
-        let y_offset = (index as f32 - 4.0) * 10.0 * scale;
+    let color = Color32::from_rgba_premultiplied(156, 72, 0, 24);
+    for index in 0..5 {
+        let y_offset = (index as f32 - 2.0) * 12.0 * scale;
         painter.line_segment(
             [
-                pos2(rect.left() + 24.0 * scale, center.y + y_offset),
+                pos2(rect.left() + 46.0 * scale, center.y + y_offset),
                 pos2(center.x - 84.0 * scale, center.y),
             ],
-            Stroke::new(0.6 * scale, color),
+            Stroke::new(0.45 * scale, color),
         );
         painter.line_segment(
             [
-                pos2(rect.right() - 24.0 * scale, center.y + y_offset),
+                pos2(rect.right() - 46.0 * scale, center.y + y_offset),
                 pos2(center.x + 84.0 * scale, center.y),
             ],
-            Stroke::new(0.6 * scale, color),
+            Stroke::new(0.45 * scale, color),
         );
     }
 }
@@ -1038,6 +1136,22 @@ fn center_bottom_points(rect: Rect) -> Vec<Pos2> {
     ]
 }
 
+fn offset_points(points: &[Pos2], offset: egui::Vec2) -> Vec<Pos2> {
+    points.iter().map(|point| *point + offset).collect()
+}
+
+fn paint_vertical_gradient(painter: &egui::Painter, rect: Rect, top: Color32, bottom: Color32) {
+    let mut mesh = egui::Mesh::default();
+    let start = mesh.vertices.len() as u32;
+    mesh.colored_vertex(rect.left_top(), top);
+    mesh.colored_vertex(rect.right_top(), top);
+    mesh.colored_vertex(rect.left_bottom(), bottom);
+    mesh.colored_vertex(rect.right_bottom(), bottom);
+    mesh.add_triangle(start, start + 1, start + 2);
+    mesh.add_triangle(start + 2, start + 1, start + 3);
+    painter.add(egui::Shape::mesh(mesh));
+}
+
 fn draw_label(
     painter: &egui::Painter,
     pos: Pos2,
@@ -1080,10 +1194,14 @@ fn draw_glow_number(
     size: f32,
     color: Color32,
 ) {
-    let glow = Color32::from_rgba_premultiplied(color.r(), color.g(), color.b(), 34);
-    for offset in [vec2(-2.0, 0.0), vec2(2.0, 0.0), vec2(0.0, 2.0)] {
-        draw_number(painter, pos + offset, align, value, size + 3.0, glow);
-    }
+    draw_number(
+        painter,
+        pos + vec2(1.8, 2.6),
+        align,
+        value,
+        size,
+        Color32::from_rgba_premultiplied(0, 0, 0, 190),
+    );
     draw_number(painter, pos, align, value, size, color);
 }
 
