@@ -11,14 +11,13 @@ use crate::hud::{HudHandle, new_hud_handle};
 use crate::telemetry::{DamageSample, InputSample, StatusSample, TelemetryUpdate};
 
 const APP_BG: Color32 = Color32::from_rgb(4, 5, 7);
-const SCREEN_BG: Color32 = Color32::from_rgb(7, 10, 13);
-const LINE: Color32 = Color32::from_rgb(42, 54, 64);
-const LINE_HOT: Color32 = Color32::from_rgb(180, 98, 12);
+const SCREEN_BG: Color32 = Color32::from_rgb(3, 6, 8);
+const LINE: Color32 = Color32::from_rgb(36, 46, 52);
+const LINE_HOT: Color32 = Color32::from_rgb(190, 104, 14);
 const TEXT: Color32 = Color32::from_rgb(238, 242, 244);
 const MUTED: Color32 = Color32::from_rgb(142, 152, 160);
 const ORANGE: Color32 = Color32::from_rgb(255, 149, 18);
 const GREEN: Color32 = Color32::from_rgb(72, 241, 77);
-const BLUE: Color32 = Color32::from_rgb(28, 164, 255);
 const RED: Color32 = Color32::from_rgb(255, 55, 35);
 
 pub fn run(config: BridgeConfig) -> Result<(), String> {
@@ -87,55 +86,16 @@ fn draw_display(painter: &egui::Painter, rect: Rect, state: &TelemetryUpdate, er
 
     let base = rect.width().min(rect.height());
     let margin = vec2(
-        (rect.width() * 0.020).clamp(10.0, 30.0),
-        (base * 0.035).clamp(10.0, 24.0),
+        (rect.width() * 0.026).clamp(12.0, 38.0),
+        (base * 0.050).clamp(14.0, 34.0),
     );
-    let screen = rect.shrink2(margin);
-    let scale = display_scale(screen);
-    let glow = screen.expand(7.0 * scale);
-    painter.rect_stroke(
-        glow,
-        18.0 * scale,
-        Stroke::new(
-            3.0 * scale,
-            Color32::from_rgba_premultiplied(255, 124, 0, 70),
-        ),
-        StrokeKind::Inside,
-    );
-    painter.rect_filled(screen, 18.0 * scale, Color32::from_rgb(16, 18, 18));
-    painter.rect_stroke(
-        screen,
-        18.0 * scale,
-        Stroke::new(2.0 * scale, Color32::from_rgb(61, 64, 62)),
-        StrokeKind::Inside,
-    );
+    let panel = rect.shrink2(margin);
+    let scale = display_scale(panel);
+    draw_panel_surface(painter, panel, scale);
 
-    let top_sheen = Rect::from_min_max(
-        screen.left_top() + vec2(18.0 * scale, 10.0 * scale),
-        pos2(screen.right() - 18.0 * scale, screen.top() + 16.0 * scale),
-    );
-    painter.rect_filled(top_sheen, 3.0 * scale, Color32::from_rgb(88, 48, 14));
-
-    let bezel = screen.shrink2(vec2(24.0 * scale, 18.0 * scale));
-    painter.rect_filled(bezel, 10.0 * scale, Color32::from_rgb(1, 2, 4));
-    painter.rect_stroke(
-        bezel,
-        10.0 * scale,
-        Stroke::new(1.5 * scale, Color32::from_rgb(36, 41, 44)),
-        StrokeKind::Inside,
-    );
-
-    let lcd = bezel.shrink2(vec2(18.0 * scale, 15.0 * scale));
-    painter.rect_filled(lcd, 4.0 * scale, SCREEN_BG);
-    painter.rect_stroke(
-        lcd,
-        4.0 * scale,
-        Stroke::new(1.0 * scale, Color32::from_rgb(36, 44, 47)),
-        StrokeKind::Inside,
-    );
-
-    draw_rev_lights(painter, screen, state.input.as_ref());
-    draw_lcd_contents(painter, lcd, state, error);
+    let content = panel.shrink2(vec2(panel.width() * 0.050, panel.height() * 0.055));
+    draw_rev_lights(painter, panel, state.input.as_ref());
+    draw_lcd_contents(painter, content, state, error);
 }
 
 fn draw_lcd_contents(
@@ -148,8 +108,8 @@ fn draw_lcd_contents(
     let status = state.status.as_ref();
     let damage = state.damage.as_ref();
 
-    let top_h = rect.height() * 0.20;
-    let mid_h = rect.height() * 0.43;
+    let top_h = rect.height() * 0.28;
+    let mid_h = rect.height() * 0.36;
 
     let top = Rect::from_min_max(rect.left_top(), pos2(rect.right(), rect.top() + top_h));
     let mid = Rect::from_min_max(
@@ -158,10 +118,10 @@ fn draw_lcd_contents(
     );
     let bottom = Rect::from_min_max(pos2(rect.left(), mid.bottom()), rect.right_bottom());
 
-    draw_top_status(painter, top, state);
+    draw_lcd_texture(painter, rect);
+    draw_top_status(painter, top, input, status);
     draw_rpm_arc(painter, mid, input, status);
-    draw_speed_panel(painter, mid, input);
-    draw_gear_panel(painter, mid, input);
+    draw_speed_panel(painter, mid, state);
     draw_delta_panel(painter, mid, state);
     draw_energy_row(painter, bottom, status);
     draw_tyres_panel(painter, bottom, input, damage);
@@ -173,19 +133,112 @@ fn draw_lcd_contents(
     }
 }
 
-fn draw_top_status(painter: &egui::Painter, rect: Rect, state: &TelemetryUpdate) {
+fn draw_top_status(
+    painter: &egui::Painter,
+    rect: Rect,
+    input: Option<&InputSample>,
+    status: Option<&StatusSample>,
+) {
     let s = display_scale(rect);
-    let lap = state.lap.as_ref();
-    let session = state.session.as_ref();
-    let left = rect.left() + 18.0 * s;
-    let right = rect.right() - 18.0 * s;
+    let max_rpm = status.map(|status| status.max_rpm.max(1)).unwrap_or(15_000);
+    let rpm = input.map(|input| input.rpm).unwrap_or(0).min(max_rpm);
+    let rpm_ratio = rpm as f32 / max_rpm as f32;
+    let band = Rect::from_min_max(
+        pos2(
+            rect.left() + rect.width() * 0.06,
+            rect.top() + rect.height() * 0.34,
+        ),
+        pos2(
+            rect.right() - rect.width() * 0.06,
+            rect.top() + rect.height() * 0.48,
+        ),
+    );
+
+    draw_rpm_bar(painter, band, rpm_ratio, s);
+
+    for tick in 0..=15 {
+        let x = band.left() + band.width() * tick as f32 / 15.0;
+        let color = if tick >= 11 { ORANGE } else { TEXT };
+        text(
+            painter,
+            pos2(x, band.bottom() + 21.0 * s),
+            Align2::CENTER_CENTER,
+            &tick.to_string(),
+            17.0 * s,
+            color,
+        );
+    }
 
     text(
         painter,
-        pos2(left, rect.top() + rect.height() * 0.30),
+        pos2(rect.center().x, rect.bottom() - 10.0 * s),
+        Align2::CENTER_CENTER,
+        "RPM x1000",
+        13.0 * s,
+        MUTED,
+    );
+}
+
+fn draw_rpm_arc(
+    painter: &egui::Painter,
+    rect: Rect,
+    input: Option<&InputSample>,
+    _status: Option<&StatusSample>,
+) {
+    let s = display_scale(rect);
+    let center = rect.center();
+    let motif_color = Color32::from_rgba_premultiplied(60, 28, 0, 95);
+    draw_chevron_motif(painter, rect, motif_color, s);
+
+    let gear = input
+        .map(|input| gear_label(input.gear))
+        .unwrap_or_else(|| "-".to_owned());
+    glow_text(
+        painter,
+        pos2(center.x, center.y - 2.0 * s),
+        Align2::CENTER_CENTER,
+        &gear,
+        132.0 * s,
+        ORANGE,
+        Color32::from_rgba_premultiplied(150, 70, 0, 100),
+    );
+    let rpm = input
+        .map(|input| input.rpm.to_string())
+        .unwrap_or_else(|| "----".to_owned());
+    text(
+        painter,
+        pos2(center.x, rect.bottom() - 22.0 * s),
+        Align2::CENTER_CENTER,
+        &rpm,
+        25.0 * s,
+        TEXT,
+    );
+    text(
+        painter,
+        pos2(center.x, rect.bottom() - 2.0 * s),
+        Align2::CENTER_CENTER,
+        "RPM",
+        13.0 * s,
+        MUTED,
+    );
+}
+
+fn draw_speed_panel(painter: &egui::Painter, rect: Rect, state: &TelemetryUpdate) {
+    let s = display_scale(rect);
+    let input = state.input.as_ref();
+    let lap = state.lap.as_ref();
+    let session = state.session.as_ref();
+    let panel = Rect::from_min_size(
+        pos2(rect.left() + 10.0 * s, rect.top() + rect.height() * 0.04),
+        vec2(rect.width() * 0.32, rect.height() * 0.92),
+    );
+    angular_panel(painter, panel, 1.0, s);
+    text(
+        painter,
+        pos2(panel.left() + 28.0 * s, panel.top() + 23.0 * s),
         Align2::LEFT_CENTER,
         "LAP",
-        20.0 * s,
+        15.0 * s,
         TEXT,
     );
     let lap_value = match (lap, session) {
@@ -195,22 +248,46 @@ fn draw_top_status(painter: &egui::Painter, rect: Rect, state: &TelemetryUpdate)
         (Some(lap), None) => format!("{}/--", lap.current_lap_num),
         _ => "--/--".to_owned(),
     };
-    text(
+    text_lap_value(
         painter,
-        pos2(left, rect.top() + rect.height() * 0.64),
-        Align2::LEFT_CENTER,
+        pos2(panel.left() + 28.0 * s, panel.top() + 62.0 * s),
         &lap_value,
-        25.0 * s,
-        TEXT,
-    );
-    painter.line_segment(
-        [
-            pos2(left, rect.bottom() - 7.0 * s),
-            pos2(left + 128.0 * s, rect.bottom() - 7.0 * s),
-        ],
-        Stroke::new(1.5 * s, LINE),
+        s,
     );
 
+    let speed = input
+        .map(|input| input.speed_kmh.to_string())
+        .unwrap_or_else(|| "--".to_owned());
+    glow_text(
+        painter,
+        pos2(panel.left() + 28.0 * s, panel.bottom() - 64.0 * s),
+        Align2::LEFT_CENTER,
+        &speed,
+        74.0 * s,
+        TEXT,
+        Color32::from_rgba_premultiplied(60, 70, 76, 80),
+    );
+    text(
+        painter,
+        pos2(panel.left() + 31.0 * s, panel.bottom() - 19.0 * s),
+        Align2::LEFT_CENTER,
+        "KPH",
+        17.0 * s,
+        MUTED,
+    );
+}
+
+fn draw_delta_panel(painter: &egui::Painter, rect: Rect, state: &TelemetryUpdate) {
+    let s = display_scale(rect);
+    let panel = Rect::from_min_size(
+        pos2(
+            rect.right() - rect.width() * 0.32 - 10.0 * s,
+            rect.top() + rect.height() * 0.04,
+        ),
+        vec2(rect.width() * 0.32, rect.height() * 0.92),
+    );
+    angular_panel(painter, panel, -1.0, s);
+    let lap = state.lap.as_ref();
     let current = lap
         .map(|lap| format_ms(lap.current_lap_time_ms))
         .unwrap_or_else(|| "--:--.---".to_owned());
@@ -219,170 +296,45 @@ fn draw_top_status(painter: &egui::Painter, rect: Rect, state: &TelemetryUpdate)
         .unwrap_or_else(|| "--:--.---".to_owned());
     text(
         painter,
-        pos2(right, rect.top() + rect.height() * 0.34),
-        Align2::RIGHT_CENTER,
-        &current,
-        27.0 * s,
+        pos2(panel.left() + 34.0 * s, panel.top() + 24.0 * s),
+        Align2::LEFT_CENTER,
+        "LAP TIME",
+        15.0 * s,
         TEXT,
+    );
+    glow_text(
+        painter,
+        pos2(panel.left() + 34.0 * s, panel.top() + 68.0 * s),
+        Align2::LEFT_CENTER,
+        &current,
+        34.0 * s,
+        TEXT,
+        Color32::from_rgba_premultiplied(60, 70, 76, 80),
     );
     text(
         painter,
-        pos2(right, rect.top() + rect.height() * 0.68),
-        Align2::RIGHT_CENTER,
-        &format!("BEST {best}"),
+        pos2(panel.left() + 34.0 * s, panel.center().y - 6.0 * s),
+        Align2::LEFT_CENTER,
+        "BEST",
         14.0 * s,
         TEXT,
     );
-}
-
-fn draw_rpm_arc(
-    painter: &egui::Painter,
-    rect: Rect,
-    input: Option<&InputSample>,
-    status: Option<&StatusSample>,
-) {
-    let s = display_scale(rect);
-    let center = pos2(rect.center().x, rect.bottom() + rect.height() * 0.58);
-    let radius = (rect.width() * 0.34).min(rect.height() * 1.78);
-    let start = std::f32::consts::PI * 1.18;
-    let end = std::f32::consts::PI * 1.82;
-    let max_rpm = status.map(|status| status.max_rpm.max(1)).unwrap_or(15_000);
-    let rpm = input.map(|input| input.rpm).unwrap_or(0).min(max_rpm);
-    let rpm_ratio = rpm as f32 / max_rpm as f32;
-
-    draw_arc(
-        painter,
-        center,
-        radius,
-        start,
-        end,
-        Stroke::new(4.0 * s, Color32::from_rgb(145, 154, 156)),
-    );
-    draw_arc(
-        painter,
-        center,
-        radius,
-        start + (end - start) * 0.70,
-        end,
-        Stroke::new(4.0 * s, RED),
-    );
-    draw_arc(
-        painter,
-        center,
-        radius,
-        start,
-        start + (end - start) * rpm_ratio,
-        Stroke::new(5.5 * s, ORANGE),
-    );
-
-    for tick in 4..=15 {
-        let t = (tick - 4) as f32 / 11.0;
-        let angle = start + (end - start) * t;
-        let outer = polar(center, radius + 7.0 * s, angle);
-        let inner = polar(
-            center,
-            radius - if tick % 2 == 0 { 16.0 * s } else { 10.0 * s },
-            angle,
-        );
-        painter.line_segment([inner, outer], Stroke::new(1.2 * s, TEXT));
-        if tick == 4
-            || tick == 6
-            || tick == 8
-            || tick == 10
-            || tick == 12
-            || tick == 14
-            || tick == 15
-        {
-            let label = polar(center, radius - 42.0 * s, angle);
-            text(
-                painter,
-                label,
-                Align2::CENTER_CENTER,
-                &tick.to_string(),
-                16.0 * s,
-                TEXT,
-            );
-        }
-    }
-
-    let needle = polar(center, radius - 4.0 * s, start + (end - start) * rpm_ratio);
-    painter.line_segment([center, needle], Stroke::new(2.2 * s, ORANGE));
-    painter.circle_filled(needle, 6.5 * s, ORANGE);
     text(
         painter,
-        pos2(rect.center().x, rect.top() + rect.height() * 0.26),
-        Align2::CENTER_CENTER,
-        "RPM x1000",
-        13.0 * s,
-        TEXT,
-    );
-}
-
-fn draw_speed_panel(painter: &egui::Painter, rect: Rect, input: Option<&InputSample>) {
-    let s = display_scale(rect);
-    let panel = Rect::from_min_size(
-        pos2(rect.left() + 16.0 * s, rect.top() + rect.height() * 0.42),
-        vec2(rect.width() * 0.25, rect.height() * 0.46),
-    );
-    angled_panel(painter, panel, LINE_HOT);
-
-    let speed = input
-        .map(|input| input.speed_kmh.to_string())
-        .unwrap_or_else(|| "--".to_owned());
-    text(
-        painter,
-        pos2(panel.left() + 28.0 * s, panel.center().y - 5.0 * s),
+        pos2(panel.left() + 112.0 * s, panel.center().y - 6.0 * s),
         Align2::LEFT_CENTER,
-        &speed,
-        54.0 * s,
-        TEXT,
+        &best,
+        14.0 * s,
+        MUTED,
     );
     text(
         painter,
-        pos2(panel.left() + 32.0 * s, panel.center().y + 34.0 * s),
+        pos2(panel.left() + 34.0 * s, panel.center().y + 42.0 * s),
         Align2::LEFT_CENTER,
-        "KPH",
-        19.0 * s,
+        "DELTA",
+        15.0 * s,
         TEXT,
     );
-}
-
-fn draw_gear_panel(painter: &egui::Painter, rect: Rect, input: Option<&InputSample>) {
-    let s = display_scale(rect);
-    let gear = input
-        .map(|input| gear_label(input.gear))
-        .unwrap_or_else(|| "-".to_owned());
-    text(
-        painter,
-        pos2(rect.center().x, rect.top() + rect.height() * 0.62),
-        Align2::CENTER_CENTER,
-        &gear,
-        126.0 * s,
-        ORANGE,
-    );
-    let rpm = input
-        .map(|input| input.rpm.to_string())
-        .unwrap_or_else(|| "----".to_owned());
-    text(
-        painter,
-        pos2(rect.center().x, rect.bottom() - 12.0 * s),
-        Align2::CENTER_CENTER,
-        &format!("RPM {rpm}"),
-        23.0 * s,
-        TEXT,
-    );
-}
-
-fn draw_delta_panel(painter: &egui::Painter, rect: Rect, state: &TelemetryUpdate) {
-    let s = display_scale(rect);
-    let panel = Rect::from_min_size(
-        pos2(
-            rect.right() - rect.width() * 0.25 - 16.0 * s,
-            rect.top() + rect.height() * 0.42,
-        ),
-        vec2(rect.width() * 0.25, rect.height() * 0.46),
-    );
-    angled_panel(painter, panel, LINE_HOT);
 
     let delta = state
         .lap
@@ -390,98 +342,118 @@ fn draw_delta_panel(painter: &egui::Painter, rect: Rect, state: &TelemetryUpdate
         .and_then(|lap| lap.delta_to_car_in_front_ms)
         .map(format_delta_ms)
         .unwrap_or_else(|| "--.---".to_owned());
-    text(
+    glow_text(
         painter,
-        pos2(panel.center().x, panel.center().y - 8.0 * s),
-        Align2::CENTER_CENTER,
+        pos2(panel.left() + 52.0 * s, panel.bottom() - 31.0 * s),
+        Align2::LEFT_CENTER,
         &delta,
-        36.0 * s,
+        35.0 * s,
         GREEN,
-    );
-    text(
-        painter,
-        pos2(panel.center().x, panel.center().y + 29.0 * s),
-        Align2::CENTER_CENTER,
-        "FRONT",
-        17.0 * s,
-        GREEN,
+        Color32::from_rgba_premultiplied(25, 95, 30, 80),
     );
 }
 
 fn draw_energy_row(painter: &egui::Painter, rect: Rect, status: Option<&StatusSample>) {
     let s = display_scale(rect);
-    let top = rect.top() + 7.0 * s;
-    let left = rect.left() + 16.0 * s;
+    let left_panel = Rect::from_min_size(
+        pos2(rect.left() + 10.0 * s, rect.top() + 8.0 * s),
+        vec2(rect.width() * 0.30, rect.height() - 18.0 * s),
+    );
+    let right_panel = Rect::from_min_size(
+        pos2(
+            rect.right() - rect.width() * 0.30 - 10.0 * s,
+            rect.top() + 8.0 * s,
+        ),
+        vec2(rect.width() * 0.30, rect.height() - 18.0 * s),
+    );
+    angular_panel(painter, left_panel, 1.0, s);
+    angular_panel(painter, right_panel, -1.0, s);
+
+    let top = left_panel.top() + 28.0 * s;
+    let left = left_panel.left() + 28.0 * s;
     let battery = status.map(|status| status.ers_percent()).unwrap_or(0.0);
     text(
         painter,
-        pos2(left, top + 11.0 * s),
+        pos2(left, top),
         Align2::LEFT_CENTER,
-        "BATTERY",
+        "BATT",
         16.0 * s,
-        ORANGE,
+        TEXT,
     );
     text(
         painter,
-        pos2(left, top + 39.0 * s),
+        pos2(left, top + 48.0 * s),
         Align2::LEFT_CENTER,
         &format!("{battery:.0}%"),
-        25.0 * s,
+        37.0 * s,
         TEXT,
     );
     draw_segment_bar(
         painter,
         Rect::from_min_size(
-            pos2(left + 94.0 * s, top + 27.0 * s),
-            vec2(176.0 * s, 18.0 * s),
+            pos2(left, left_panel.bottom() - 28.0 * s),
+            vec2(left_panel.width() - 56.0 * s, 12.0 * s),
         ),
         battery / 100.0,
-        12,
-        ORANGE,
+        14,
+        GREEN,
     );
 
     let deployed = status
         .map(|status| status.ers_deployed_this_lap / 4_000_000.0)
         .unwrap_or(0.0)
         .clamp(0.0, 1.0);
+    let right_left = right_panel.left() + 40.0 * s;
+    let right_top = right_panel.top() + 28.0 * s;
     text(
         painter,
-        pos2(rect.right() - 226.0 * s, top + 15.0 * s),
+        pos2(right_left, right_top),
         Align2::LEFT_CENTER,
         "ERS",
         16.0 * s,
+        TEXT,
+    );
+    text(
+        painter,
+        pos2(right_panel.right() - 32.0 * s, right_top),
+        Align2::RIGHT_CENTER,
+        "DEPLOY",
+        14.0 * s,
+        TEXT,
+    );
+    text(
+        painter,
+        pos2(right_panel.right() - 28.0 * s, right_top),
+        Align2::LEFT_CENTER,
+        &format!("{:.0}", deployed * 4.0),
+        26.0 * s,
         ORANGE,
     );
     text(
         painter,
-        pos2(rect.right() - 226.0 * s, top + 43.0 * s),
+        pos2(right_left, right_top + 57.0 * s),
         Align2::LEFT_CENTER,
-        &format!("{:+.1}", deployed * 4.0),
-        25.0 * s,
-        BLUE,
+        &format!("{:.1}", deployed * 4.0),
+        35.0 * s,
+        TEXT,
+    );
+    text(
+        painter,
+        pos2(right_left + 82.0 * s, right_top + 61.0 * s),
+        Align2::LEFT_CENTER,
+        "MJ / LAP",
+        13.0 * s,
+        MUTED,
     );
     draw_segment_bar(
         painter,
         Rect::from_min_size(
-            pos2(rect.right() - 116.0 * s, top + 31.0 * s),
-            vec2(96.0 * s, 14.0 * s),
+            pos2(right_left, right_panel.bottom() - 28.0 * s),
+            vec2(right_panel.width() - 74.0 * s, 12.0 * s),
         ),
         deployed,
-        8,
-        BLUE,
-    );
-
-    let y = top + 58.0 * s;
-    painter.line_segment(
-        [pos2(left, y), pos2(rect.center().x - 122.0 * s, y)],
-        Stroke::new(1.0 * s, LINE_HOT),
-    );
-    painter.line_segment(
-        [
-            pos2(rect.center().x + 122.0 * s, y),
-            pos2(rect.right() - 18.0 * s, y),
-        ],
-        Stroke::new(1.0 * s, LINE_HOT),
+        12,
+        ORANGE,
     );
 }
 
@@ -492,59 +464,60 @@ fn draw_tyres_panel(
     damage: Option<&DamageSample>,
 ) {
     let s = display_scale(rect);
-    let center = pos2(rect.center().x, rect.top() + rect.height() * 0.53);
-    text(
-        painter,
-        pos2(center.x, rect.top() + 26.0 * s),
-        Align2::CENTER_CENTER,
-        "TYRES",
-        17.0 * s,
-        TEXT,
+    let panel = Rect::from_center_size(
+        pos2(rect.center().x, rect.center().y + 2.0 * s),
+        vec2(rect.width() * 0.38, rect.height() - 4.0 * s),
     );
+    bottom_center_panel(painter, panel, s);
+    let center = pos2(panel.center().x, panel.top() + panel.height() * 0.54);
     draw_mini_car(
         painter,
-        Rect::from_center_size(center + vec2(0.0, 24.0 * s), vec2(54.0 * s, 78.0 * s)),
+        Rect::from_center_size(center + vec2(0.0, 8.0 * s), vec2(74.0 * s, 92.0 * s)),
     );
 
     let temps = input.map(|input| input.tyre_surface_temps_c);
     let wear = damage.map(|damage| damage.tyre_wear);
     tyre_metric(
         painter,
-        pos2(center.x - 116.0 * s, center.y - 5.0 * s),
+        pos2(panel.left() + 54.0 * s, panel.top() + 42.0 * s),
+        "FL",
         temps.map(|temps| temps.fl),
         wear.map(|wear| wear.fl),
-        Align2::RIGHT_CENTER,
+        Align2::LEFT_CENTER,
         s,
     );
     tyre_metric(
         painter,
-        pos2(center.x + 116.0 * s, center.y - 5.0 * s),
+        pos2(panel.right() - 54.0 * s, panel.top() + 42.0 * s),
+        "FR",
         temps.map(|temps| temps.fr),
         wear.map(|wear| wear.fr),
-        Align2::LEFT_CENTER,
-        s,
-    );
-    tyre_metric(
-        painter,
-        pos2(center.x - 116.0 * s, center.y + 52.0 * s),
-        temps.map(|temps| temps.rl),
-        wear.map(|wear| wear.rl),
         Align2::RIGHT_CENTER,
         s,
     );
     tyre_metric(
         painter,
-        pos2(center.x + 116.0 * s, center.y + 52.0 * s),
+        pos2(panel.left() + 54.0 * s, panel.bottom() - 40.0 * s),
+        "RL",
+        temps.map(|temps| temps.rl),
+        wear.map(|wear| wear.rl),
+        Align2::LEFT_CENTER,
+        s,
+    );
+    tyre_metric(
+        painter,
+        pos2(panel.right() - 54.0 * s, panel.bottom() - 40.0 * s),
+        "RR",
         temps.map(|temps| temps.rr),
         wear.map(|wear| wear.rr),
-        Align2::LEFT_CENTER,
+        Align2::RIGHT_CENTER,
         s,
     );
 }
 
 fn draw_rev_lights(painter: &egui::Painter, screen: Rect, input: Option<&InputSample>) {
     let s = display_scale(screen);
-    let count = 18;
+    let count = 16;
     let radius = (screen.width() * 0.0085).clamp(5.5, 10.0);
     let gap = radius * 2.4;
     let total_w = gap * (count - 1) as f32;
@@ -557,12 +530,14 @@ fn draw_rev_lights(painter: &egui::Painter, screen: Rect, input: Option<&InputSa
         .unwrap_or(0);
 
     for index in 0..count {
-        let color = if index < 6 {
+        let color = if index < 5 {
             GREEN
+        } else if index < 11 {
+            ORANGE
         } else if index < 13 {
             RED
         } else {
-            BLUE
+            Color32::from_rgb(232, 28, 190)
         };
         let fill = if index < active {
             color
@@ -622,19 +597,267 @@ fn draw_status_strip(painter: &egui::Painter, rect: Rect, message: &str, color: 
     );
 }
 
-fn angled_panel(painter: &egui::Painter, rect: Rect, color: Color32) {
-    let notch = rect.width() * 0.12;
+fn draw_panel_surface(painter: &egui::Painter, rect: Rect, scale: f32) {
+    let cut = 30.0 * scale;
+    let base_shape = vec![
+        pos2(rect.left() + cut, rect.top()),
+        pos2(rect.right() - cut, rect.top()),
+        rect.right_top() + vec2(cut * 0.72, cut * 0.72),
+        rect.right_bottom() - vec2(cut * 0.72, cut * 0.72),
+        pos2(rect.right() - cut, rect.bottom()),
+        pos2(rect.left() + cut, rect.bottom()),
+        rect.left_bottom() + vec2(cut * 0.72, -cut * 0.72),
+        rect.left_top() + vec2(cut * 0.72, cut * 0.72),
+    ];
+    painter.add(egui::Shape::convex_polygon(
+        base_shape,
+        SCREEN_BG,
+        Stroke::NONE,
+    ));
+
+    for index in 0..18 {
+        let offset = index as f32 * 28.0 * scale;
+        let color = Color32::from_rgba_premultiplied(22, 28, 30, 28);
+        painter.line_segment(
+            [
+                pos2(rect.left() + offset, rect.top()),
+                pos2(rect.left() + offset + rect.height() * 0.55, rect.bottom()),
+            ],
+            Stroke::new(0.5 * scale, color),
+        );
+    }
+
+    draw_outer_silhouette(painter, rect, scale);
+}
+
+fn draw_rpm_bar(painter: &egui::Painter, rect: Rect, value: f32, scale: f32) {
+    let segments = 72;
+    let active = (value.clamp(0.0, 1.0) * segments as f32).round() as usize;
+    let gap = 1.0 * scale;
+    let segment_w = (rect.width() - gap * (segments - 1) as f32) / segments as f32;
+
+    for index in 0..segments {
+        let x = rect.left() + index as f32 * (segment_w + gap);
+        let t = index as f32 / segments as f32;
+        let color = if index < active {
+            if t > 0.88 {
+                RED
+            } else if t > 0.70 {
+                ORANGE
+            } else {
+                Color32::from_rgb(205, 210, 210)
+            }
+        } else if t > 0.88 {
+            Color32::from_rgb(65, 18, 15)
+        } else if t > 0.70 {
+            Color32::from_rgb(67, 37, 12)
+        } else {
+            Color32::from_rgb(56, 61, 62)
+        };
+        let skew = rect.height() * 0.35;
+        let segment = vec![
+            pos2(x + skew, rect.top()),
+            pos2(x + segment_w + skew, rect.top()),
+            pos2(x + segment_w, rect.bottom()),
+            pos2(x, rect.bottom()),
+        ];
+        painter.add(egui::Shape::convex_polygon(segment, color, Stroke::NONE));
+    }
+
+    painter.line_segment(
+        [rect.left_bottom(), rect.right_bottom()],
+        Stroke::new(0.9 * scale, Color32::from_rgb(210, 216, 216)),
+    );
+}
+
+fn draw_outer_silhouette(painter: &egui::Painter, rect: Rect, scale: f32) {
+    let cut = 30.0 * scale;
+    let bottom_tab = 72.0 * scale;
     let points = vec![
-        rect.left_top(),
-        pos2(rect.right(), rect.top()),
+        pos2(rect.left() + cut, rect.top()),
+        pos2(rect.right() - cut, rect.top()),
+        rect.right_top() + vec2(cut * 0.72, cut * 0.72),
+        rect.right_bottom() - vec2(cut * 0.72, cut * 0.72),
+        pos2(rect.center().x + bottom_tab, rect.bottom()),
+        pos2(
+            rect.center().x + bottom_tab * 0.62,
+            rect.bottom() + 18.0 * scale,
+        ),
+        pos2(
+            rect.center().x - bottom_tab * 0.62,
+            rect.bottom() + 18.0 * scale,
+        ),
+        pos2(rect.center().x - bottom_tab, rect.bottom()),
+        rect.left_bottom() + vec2(cut * 0.72, -cut * 0.72),
+        rect.left_top() + vec2(cut * 0.72, cut * 0.72),
+        pos2(rect.left() + cut, rect.top()),
+    ];
+    painter.add(egui::Shape::closed_line(
+        points,
+        Stroke::new(1.2 * scale, Color32::from_rgb(76, 80, 79)),
+    ));
+}
+
+fn draw_lcd_texture(painter: &egui::Painter, rect: Rect) {
+    let s = display_scale(rect);
+    let grid = Color32::from_rgba_premultiplied(20, 30, 34, 32);
+    for index in 1..5 {
+        let x = rect.left() + rect.width() * index as f32 / 5.0;
+        painter.line_segment(
+            [
+                pos2(x, rect.top() + 12.0 * s),
+                pos2(x, rect.bottom() - 12.0 * s),
+            ],
+            Stroke::new(0.45 * s, grid),
+        );
+    }
+    for index in 1..4 {
+        let y = rect.top() + rect.height() * index as f32 / 4.0;
+        painter.line_segment(
+            [
+                pos2(rect.left() + 12.0 * s, y),
+                pos2(rect.right() - 12.0 * s, y),
+            ],
+            Stroke::new(0.45 * s, grid),
+        );
+    }
+    painter.rect_filled(
+        Rect::from_min_size(rect.left_top(), vec2(rect.width(), rect.height() * 0.18)),
+        0.0,
+        Color32::from_rgba_premultiplied(24, 30, 30, 30),
+    );
+}
+
+fn angular_panel(painter: &egui::Painter, rect: Rect, direction: f32, scale: f32) {
+    let notch = rect.width() * 0.28;
+    let mid = rect.center().y;
+    let points = if direction > 0.0 {
+        vec![
+            rect.left_top(),
+            pos2(rect.right() - notch, rect.top()),
+            pos2(rect.right(), mid),
+            pos2(rect.right() - notch, rect.bottom()),
+            rect.left_bottom(),
+        ]
+    } else {
+        vec![
+            pos2(rect.left() + notch, rect.top()),
+            rect.right_top(),
+            rect.right_bottom(),
+            pos2(rect.left() + notch, rect.bottom()),
+            pos2(rect.left(), mid),
+        ]
+    };
+    painter.add(egui::Shape::convex_polygon(
+        points,
+        Color32::from_rgba_premultiplied(6, 9, 10, 110),
+        Stroke::new(
+            0.8 * scale,
+            Color32::from_rgba_premultiplied(170, 78, 0, 160),
+        ),
+    ));
+}
+
+fn bottom_center_panel(painter: &egui::Painter, rect: Rect, scale: f32) {
+    let notch = rect.width() * 0.08;
+    let points = vec![
+        pos2(rect.left() + notch, rect.top()),
+        pos2(rect.right() - notch, rect.top()),
         rect.right_bottom(),
-        pos2(rect.left() + notch, rect.bottom()),
+        rect.left_bottom(),
     ];
     painter.add(egui::Shape::convex_polygon(
         points,
-        Color32::from_rgba_premultiplied(8, 12, 15, 150),
-        Stroke::new(1.2 * display_scale(rect), color),
+        Color32::from_rgba_premultiplied(8, 12, 14, 125),
+        Stroke::new(
+            0.8 * scale,
+            Color32::from_rgba_premultiplied(170, 78, 0, 160),
+        ),
     ));
+}
+
+fn draw_chevron_motif(painter: &egui::Painter, rect: Rect, color: Color32, scale: f32) {
+    for index in 0..5 {
+        let inset = index as f32 * 18.0 * scale;
+        let left = rect.left() + rect.width() * 0.33 - inset;
+        let right = rect.right() - rect.width() * 0.33 + inset;
+        let top = rect.top() + 10.0 * scale + inset * 0.18;
+        let bottom = rect.bottom() - 8.0 * scale - inset * 0.18;
+        painter.line_segment(
+            [
+                pos2(left, top),
+                pos2(rect.center().x - 74.0 * scale, rect.center().y),
+            ],
+            Stroke::new(0.7 * scale, color),
+        );
+        painter.line_segment(
+            [
+                pos2(left, bottom),
+                pos2(rect.center().x - 74.0 * scale, rect.center().y),
+            ],
+            Stroke::new(0.7 * scale, color),
+        );
+        painter.line_segment(
+            [
+                pos2(right, top),
+                pos2(rect.center().x + 74.0 * scale, rect.center().y),
+            ],
+            Stroke::new(0.7 * scale, color),
+        );
+        painter.line_segment(
+            [
+                pos2(right, bottom),
+                pos2(rect.center().x + 74.0 * scale, rect.center().y),
+            ],
+            Stroke::new(0.7 * scale, color),
+        );
+    }
+}
+
+fn text_lap_value(painter: &egui::Painter, pos: Pos2, value: &str, scale: f32) {
+    if let Some((current, total)) = value.split_once('/') {
+        text(
+            painter,
+            pos,
+            Align2::LEFT_CENTER,
+            current,
+            34.0 * scale,
+            TEXT,
+        );
+        text(
+            painter,
+            pos + vec2(50.0 * scale, 0.0),
+            Align2::LEFT_CENTER,
+            "/",
+            30.0 * scale,
+            ORANGE,
+        );
+        text(
+            painter,
+            pos + vec2(72.0 * scale, 0.0),
+            Align2::LEFT_CENTER,
+            total,
+            26.0 * scale,
+            TEXT,
+        );
+    } else {
+        text(painter, pos, Align2::LEFT_CENTER, value, 30.0 * scale, TEXT);
+    }
+}
+
+fn glow_text(
+    painter: &egui::Painter,
+    pos: Pos2,
+    align: Align2,
+    value: &str,
+    size: f32,
+    color: Color32,
+    glow: Color32,
+) {
+    for offset in [vec2(-1.0, 0.0), vec2(1.0, 0.0), vec2(0.0, 1.0)] {
+        text(painter, pos + offset * 2.0, align, value, size + 2.0, glow);
+    }
+    text(painter, pos, align, value, size, color);
 }
 
 fn draw_segment_bar(
@@ -719,6 +942,7 @@ fn draw_mini_car(painter: &egui::Painter, rect: Rect) {
 fn tyre_metric(
     painter: &egui::Painter,
     pos: Pos2,
+    label: &str,
     temp: Option<u8>,
     wear: Option<f32>,
     align: Align2,
@@ -727,7 +951,23 @@ fn tyre_metric(
     let temp_text = temp
         .map(|temp| format!("{temp}C"))
         .unwrap_or_else(|| "--C".to_owned());
-    text(painter, pos, align, &temp_text, 20.0 * scale, TEXT);
+    text(
+        painter,
+        pos + vec2(0.0, -18.0 * scale),
+        align,
+        label,
+        12.0 * scale,
+        TEXT,
+    );
+    text(painter, pos, align, &temp_text, 18.0 * scale, GREEN);
+    text(
+        painter,
+        pos + vec2(0.0, 18.0 * scale),
+        align,
+        &format!("{:.0}%", wear.unwrap_or(0.0).clamp(0.0, 100.0)),
+        12.0 * scale,
+        MUTED,
+    );
 
     let bar_dir = if matches!(align, Align2::RIGHT_CENTER) {
         -1.0
@@ -753,31 +993,6 @@ fn tyre_metric(
         1.0,
         Color32::from_rgb(140, 224, 40),
     );
-}
-
-fn draw_arc(
-    painter: &egui::Painter,
-    center: Pos2,
-    radius: f32,
-    start: f32,
-    end: f32,
-    stroke: Stroke,
-) {
-    let steps = 48;
-    let mut previous = polar(center, radius, start);
-    for index in 1..=steps {
-        let t = index as f32 / steps as f32;
-        let next = polar(center, radius, start + (end - start) * t);
-        painter.line_segment([previous, next], stroke);
-        previous = next;
-    }
-}
-
-fn polar(center: Pos2, radius: f32, angle: f32) -> Pos2 {
-    pos2(
-        center.x + angle.cos() * radius,
-        center.y + angle.sin() * radius,
-    )
 }
 
 fn display_scale(rect: Rect) -> f32 {
