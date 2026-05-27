@@ -134,10 +134,7 @@ impl TelemetryFrame {
         let waiting = state.is_empty() && error.is_none();
 
         let max_rpm = status.map(|status| status.max_rpm.max(1)).unwrap_or(15_000);
-        let rpm = input
-            .map(|input| input.rpm)
-            .unwrap_or((sample.rpm_ratio * max_rpm as f32) as u16)
-            .min(max_rpm);
+        let rpm = input.map(|input| input.rpm.min(max_rpm));
         let lap_total = state
             .session
             .as_ref()
@@ -153,8 +150,8 @@ impl TelemetryFrame {
             gear: input
                 .map(|input| gear_label(input.gear))
                 .unwrap_or(sample.gear),
-            rpm: rpm.to_string(),
-            rpm_ratio: rpm as f32 / max_rpm as f32,
+            rpm: rpm.map(|rpm| rpm.to_string()).unwrap_or(sample.rpm),
+            rpm_ratio: rpm.map(|rpm| rpm as f32 / max_rpm as f32).unwrap_or(0.0),
             drs: input.map(|input| input.drs).unwrap_or(sample.drs),
             position: lap
                 .map(|lap| lap.car_position.max(1).to_string())
@@ -197,23 +194,23 @@ impl TelemetryFrame {
         Self {
             waiting,
             error: error.map(ToOwned::to_owned),
-            speed: "264".to_owned(),
-            gear: "7".to_owned(),
-            rpm: "8500".to_owned(),
-            rpm_ratio: 0.57,
-            drs: true,
-            position: "2".to_owned(),
-            position_total: "20".to_owned(),
-            lap_current: "2".to_owned(),
-            lap_total: "30".to_owned(),
-            current_lap: "1:24.50".to_owned(),
-            last_lap: "1:24.50".to_owned(),
-            delta: "-00.50".to_owned(),
-            front_gap: "+03.04".to_owned(),
-            behind_gap: "-01.04".to_owned(),
+            speed: "--".to_owned(),
+            gear: "--".to_owned(),
+            rpm: "--".to_owned(),
+            rpm_ratio: 0.0,
+            drs: false,
+            position: "--".to_owned(),
+            position_total: "--".to_owned(),
+            lap_current: "--".to_owned(),
+            lap_total: "--".to_owned(),
+            current_lap: "--:--.--".to_owned(),
+            last_lap: "--:--.--".to_owned(),
+            delta: "--.--".to_owned(),
+            front_gap: "--.--".to_owned(),
+            behind_gap: "--.--".to_owned(),
             flag: FlagLight::None,
-            ers_mode: "4".to_owned(),
-            ers_pct: "56%".to_owned(),
+            ers_mode: "-".to_owned(),
+            ers_pct: "--".to_owned(),
         }
     }
 }
@@ -746,6 +743,22 @@ mod tests {
                 },
             ],
         }
+    }
+
+    #[test]
+    fn empty_snapshot_uses_placeholders_not_sample_numbers() {
+        let frame = TelemetryFrame::from_update(&TelemetryUpdate::default(), None);
+
+        assert!(frame.waiting);
+        assert_eq!(frame.speed, "--");
+        assert_eq!(frame.gear, "--");
+        assert_eq!(frame.rpm, "--");
+        assert_eq!(frame.rpm_ratio, 0.0);
+        assert_eq!(frame.current_lap, "--:--.--");
+        assert_eq!(frame.last_lap, "--:--.--");
+        assert_eq!(frame.front_gap, "--.--");
+        assert_eq!(frame.behind_gap, "--.--");
+        assert_eq!(frame.flag, FlagLight::None);
     }
 
     #[test]
