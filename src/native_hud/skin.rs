@@ -2,7 +2,7 @@ use eframe::egui::{
     self, Align2, Color32, FontFamily, FontId, Rect, Stroke, StrokeKind, pos2, vec2,
 };
 
-use crate::telemetry::{LapSample, StatusSample, TelemetryUpdate};
+use crate::telemetry::{LapSample, SessionSample, StatusSample, TelemetryUpdate};
 
 pub const APP_BG: Color32 = Color32::BLACK;
 pub const ACCENT: Color32 = Color32::from_rgb(245, 248, 248);
@@ -109,6 +109,7 @@ struct TelemetryFrame {
     delta: String,
     front_gap: String,
     behind_gap: String,
+    flag: String,
     ers_mode: String,
     ers_pct: String,
 }
@@ -119,6 +120,7 @@ impl TelemetryFrame {
         let input = state.input.as_ref();
         let lap = state.lap.as_ref();
         let status = state.status.as_ref();
+        let session = state.session.as_ref();
         let waiting = state.is_empty() && error.is_none();
 
         let max_rpm = status.map(|status| status.max_rpm.max(1)).unwrap_or(15_000);
@@ -170,6 +172,7 @@ impl TelemetryFrame {
                 .and_then(|lap| lap.delta_to_car_behind_ms)
                 .map(|value| format_gap_ms(value, '-'))
                 .unwrap_or(sample.behind_gap),
+            flag: flag_label(session, lap, &sample.flag),
             ers_mode: status
                 .map(|status| status.ers_deploy_mode.to_string())
                 .unwrap_or(sample.ers_mode),
@@ -198,6 +201,7 @@ impl TelemetryFrame {
             delta: "-00.50".to_owned(),
             front_gap: "+03.04".to_owned(),
             behind_gap: "-01.04".to_owned(),
+            flag: "Green".to_owned(),
             ers_mode: "4".to_owned(),
             ers_pct: "56%".to_owned(),
         }
@@ -246,16 +250,18 @@ impl<'a> DynamicDisplay<'a> {
 }
 
 fn paint_top_row(painter: &egui::Painter, rect: Rect, frame: &TelemetryFrame, scale: f32) {
-    let cells = split_by_weights(rect, &[0.18, 0.32, 0.28, 0.22]);
+    let cells = split_by_weights(rect, &[0.16, 0.27, 0.22, 0.17, 0.18]);
     paint_box(painter, cells[0], scale);
     paint_box(painter, cells[1], scale);
     paint_box(painter, cells[2], scale);
     paint_box(painter, cells[3], scale);
+    paint_box(painter, cells[4], scale);
 
     paint_metric(painter, cells[0], &frame.speed, "KPH", 21.0, scale);
     paint_metric(painter, cells[1], &frame.last_lap, "Last Lap", 25.0, scale);
     paint_metric(painter, cells[2], &frame.delta, "Delta", 24.0, scale);
-    paint_metric(painter, cells[3], &frame.rpm, "RPM", 21.0, scale);
+    paint_metric(painter, cells[3], &frame.flag, "Flag", 18.0, scale);
+    paint_metric(painter, cells[4], &frame.rpm, "RPM", 21.0, scale);
 }
 
 fn paint_middle_grid(painter: &egui::Painter, rect: Rect, frame: &TelemetryFrame, scale: f32) {
@@ -343,9 +349,9 @@ fn paint_lower_row(painter: &egui::Painter, rect: Rect, frame: &TelemetryFrame, 
         paint_box(painter, *cell, scale);
     }
 
-    paint_metric(painter, cells[0], &frame.front_gap, "D -1", 25.0, scale);
+    paint_metric(painter, cells[0], &frame.front_gap, "Gap -1", 25.0, scale);
     paint_metric(painter, cells[1], &frame.current_lap, "Curr", 25.0, scale);
-    paint_metric(painter, cells[2], &frame.behind_gap, "D +1", 25.0, scale);
+    paint_metric(painter, cells[2], &frame.behind_gap, "Gap +1", 25.0, scale);
 }
 
 fn paint_sector_bar(painter: &egui::Painter, rect: Rect, value: f32, scale: f32) {
@@ -531,6 +537,47 @@ fn gear_label(gear: i8) -> String {
     }
 }
 
+fn flag_label(session: Option<&SessionSample>, lap: Option<&LapSample>, fallback: &str) -> String {
+    let Some(session) = session else {
+        return fallback.to_owned();
+    };
+    let Some(lap) = lap else {
+        return fallback.to_owned();
+    };
+    if session.marshal_zones.is_empty() || session.track_length_m == 0 {
+        return fallback.to_owned();
+    }
+
+    let track_length = session.track_length_m as f32;
+    let progress = (lap.lap_distance_m.rem_euclid(track_length) / track_length).clamp(0.0, 1.0);
+    let current_zone = session
+        .marshal_zones
+        .iter()
+        .filter(|zone| zone.start <= progress)
+        .max_by(|left, right| left.start.total_cmp(&right.start))
+        .or_else(|| {
+            session
+                .marshal_zones
+                .iter()
+                .max_by(|left, right| left.start.total_cmp(&right.start))
+        });
+
+    current_zone
+        .map(|zone| marshal_flag_label(zone.flag).to_owned())
+        .unwrap_or_else(|| fallback.to_owned())
+}
+
+fn marshal_flag_label(flag: i8) -> &'static str {
+    match flag {
+        0 => "None",
+        1 => "Green",
+        2 => "Blue",
+        3 => "Yellow",
+        4 => "Red",
+        _ => "--",
+    }
+}
+
 fn format_ms(value: u32) -> String {
     if value == 0 {
         return "--:--.--".to_owned();
@@ -545,7 +592,11 @@ fn format_gap_ms(value: u32, sign: char) -> String {
     let minutes = value / 60_000;
     let seconds = (value % 60_000) / 1_000;
     let centis = (value % 1_000) / 10;
-    format!("{sign}{minutes:02}:{seconds:02}.{centis:02}")
+    if minutes == 0 {
+        format!("{sign}{seconds:02}.{centis:02}")
+    } else {
+        format!("{sign}{minutes}:{seconds:02}.{centis:02}")
+    }
 }
 
 fn paint_center_message(painter: &egui::Painter, rect: Rect, message: &str, scale: f32) {
@@ -571,4 +622,82 @@ fn paint_waiting_strip(painter: &egui::Painter, rect: Rect, scale: f32) {
         10.0 * scale,
         TEXT_DIM,
     );
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::telemetry::MarshalZoneSample;
+
+    fn lap_at(distance_m: f32) -> LapSample {
+        LapSample {
+            session_time: 0.0,
+            frame_identifier: 0,
+            player_car_index: 0,
+            last_lap_time_ms: 0,
+            current_lap_time_ms: 0,
+            lap_distance_m: distance_m,
+            total_distance_m: distance_m,
+            car_position: 1,
+            current_lap_num: 1,
+            pit_status: 0,
+            sector: 0,
+            current_lap_invalid: false,
+            driver_status: 0,
+            result_status: 0,
+            delta_to_car_in_front_ms: None,
+            delta_to_car_behind_ms: None,
+            delta_to_race_leader_ms: None,
+            sector1_time_ms: None,
+            sector2_time_ms: None,
+        }
+    }
+
+    fn session_with_zones() -> SessionSample {
+        SessionSample {
+            session_time: 0.0,
+            frame_identifier: 0,
+            total_laps: 30,
+            track_length_m: 1000,
+            session_type: 0,
+            track_id: 0,
+            track_temp_c: 0,
+            air_temp_c: 0,
+            session_time_left_s: 0,
+            marshal_zones: vec![
+                MarshalZoneSample {
+                    start: 0.25,
+                    flag: 1,
+                },
+                MarshalZoneSample {
+                    start: 0.50,
+                    flag: 3,
+                },
+                MarshalZoneSample {
+                    start: 0.80,
+                    flag: 4,
+                },
+            ],
+        }
+    }
+
+    #[test]
+    fn formats_gap_as_seconds_until_one_minute() {
+        assert_eq!(format_gap_ms(3_040, '+'), "+03.04");
+        assert_eq!(format_gap_ms(60_450, '-'), "-1:00.45");
+    }
+
+    #[test]
+    fn reads_current_marshal_zone_flag_for_lap_position() {
+        let session = session_with_zones();
+
+        assert_eq!(
+            flag_label(Some(&session), Some(&lap_at(600.0)), "--"),
+            "Yellow"
+        );
+        assert_eq!(
+            flag_label(Some(&session), Some(&lap_at(100.0)), "--"),
+            "Red"
+        );
+    }
 }
