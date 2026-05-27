@@ -73,12 +73,18 @@ impl HudLayout {
         let content = shell.shrink2(vec2(shell.width() * 0.050, shell.height() * 0.060));
 
         let rpm = Rect::from_min_max(
-            pos2(content.left(), content.top() + content.height() * 0.02),
-            pos2(content.right(), content.top() + content.height() * 0.24),
+            pos2(
+                content.left() + content.width() * 0.015,
+                content.top() + content.height() * 0.015,
+            ),
+            pos2(
+                content.right() - content.width() * 0.015,
+                content.top() + content.height() * 0.245,
+            ),
         );
         let mid = Rect::from_min_max(
             pos2(content.left(), rpm.bottom() + content.height() * 0.03),
-            pos2(content.right(), content.top() + content.height() * 0.66),
+            pos2(content.right(), content.top() + content.height() * 0.655),
         );
         let bottom = Rect::from_min_max(
             pos2(content.left(), mid.bottom() + content.height() * 0.02),
@@ -421,8 +427,8 @@ fn paint_section_backplates(painter: &egui::Painter, layout: &HudLayout) {
 
 fn paint_rev_lights(painter: &egui::Painter, rect: Rect, rev_ratio: f32, scale: f32) {
     let count = 16;
-    let radius = (6.8 * scale).clamp(4.2, 8.2);
-    let gap = 32.0 * scale;
+    let radius = (13.0 * scale).clamp(8.0, 15.0);
+    let gap = 82.0 * scale;
     let total = gap * (count - 1) as f32;
     let start = rect.center().x - total / 2.0;
     let active = (rev_ratio.clamp(0.0, 1.0) * count as f32).round() as usize;
@@ -431,7 +437,7 @@ fn paint_rev_lights(painter: &egui::Painter, rect: Rect, rev_ratio: f32, scale: 
         let color = rev_light_color(index);
         let center = pos2(
             start + gap * index as f32,
-            rect.top() + rect.height() * 0.13,
+            rect.top() + rect.height() * 0.16,
         );
         let lit = index < active;
         let fill = if lit {
@@ -440,23 +446,23 @@ fn paint_rev_lights(painter: &egui::Painter, rect: Rect, rev_ratio: f32, scale: 
             Color32::from_rgb(22, 27, 27)
         };
         painter.circle_filled(
-            center + vec2(0.0, 1.6 * scale),
-            radius * 1.45,
+            center + vec2(0.0, 2.8 * scale),
+            radius * 1.70,
             Color32::from_rgba_unmultiplied(0, 0, 0, 210),
         );
         if lit {
             painter.circle_filled(
                 center,
-                radius * 2.55,
-                Color32::from_rgba_unmultiplied(color.r(), color.g(), color.b(), 64),
+                radius * 2.85,
+                Color32::from_rgba_unmultiplied(color.r(), color.g(), color.b(), 78),
             );
         }
         painter.circle_filled(center, radius, fill);
         if lit {
             painter.circle_filled(
                 center - vec2(radius * 0.25, radius * 0.28),
-                radius * 0.28,
-                Color32::from_rgba_unmultiplied(255, 255, 255, 150),
+                radius * 0.34,
+                Color32::from_rgba_unmultiplied(255, 255, 255, 178),
             );
         }
     }
@@ -465,45 +471,46 @@ fn paint_rev_lights(painter: &egui::Painter, rect: Rect, rev_ratio: f32, scale: 
 fn paint_rpm_scale(painter: &egui::Painter, rect: Rect, rpm_ratio: f32, scale: f32) {
     let bar = Rect::from_min_max(
         pos2(
-            rect.left() + rect.width() * 0.055,
-            rect.top() + rect.height() * 0.39,
+            rect.left() + rect.width() * 0.035,
+            rect.top() + rect.height() * 0.47,
         ),
         pos2(
-            rect.right() - rect.width() * 0.055,
-            rect.top() + rect.height() * 0.50,
+            rect.right() - rect.width() * 0.035,
+            rect.top() + rect.height() * 0.58,
         ),
     );
-    let segments = 96;
-    let active = (rpm_ratio.clamp(0.0, 1.0) * segments as f32).round() as usize;
-    let gap = 1.0 * scale;
+    let segments = 78;
+    let active_units = rpm_ratio.clamp(0.0, 1.0) * 15.0;
+    let gap = 1.6 * scale;
     let segment_w = (bar.width() - gap * (segments - 1) as f32) / segments as f32;
     painter.rect_filled(
-        bar.expand2(vec2(2.0 * scale, 7.0 * scale)),
-        3.0 * scale,
-        Color32::from_rgba_unmultiplied(0, 0, 0, 150),
+        bar.expand2(vec2(5.0 * scale, 5.0 * scale)),
+        12.0 * scale,
+        Color32::from_rgba_unmultiplied(0, 0, 0, 178),
     );
 
     for index in 0..segments {
         let t = index as f32 / (segments - 1) as f32;
         let x = bar.left() + index as f32 * (segment_w + gap);
-        let curve = (1.0 - (2.0 * t - 1.0).powi(2)) * 13.0 * scale;
+        let curve = (1.0 - (2.0 * t - 1.0).powi(2)) * 18.0 * scale;
+        let unit = t * 15.0;
         let segment = Rect::from_min_size(
             pos2(x, bar.top() - curve),
-            vec2(segment_w, bar.height() + curve * 0.35),
+            vec2(segment_w, bar.height() + curve * 0.22),
         );
-        let color = rpm_segment_color(t, index < active);
-        let skew = 6.0 * scale;
+        let color = rpm_segment_color(unit, unit <= active_units);
+        let skew = 9.0 * scale;
         painter.add(egui::Shape::convex_polygon(
             vec![
                 pos2(segment.left() + skew, segment.top()),
                 pos2(segment.right() + skew, segment.top()),
-                segment.right_bottom(),
-                segment.left_bottom(),
+                pos2(segment.right() - skew * 0.22, segment.bottom()),
+                pos2(segment.left() - skew * 0.22, segment.bottom()),
             ],
             color,
             Stroke::NONE,
         ));
-        if index < active {
+        if unit <= active_units {
             painter.line_segment(
                 [
                     pos2(
@@ -526,31 +533,37 @@ fn paint_rpm_scale(painter: &egui::Painter, rect: Rect, rpm_ratio: f32, scale: f
     for tick in 0..=15 {
         let x = bar.left() + bar.width() * tick as f32 / 15.0;
         let t = tick as f32 / 15.0;
-        let curve = (1.0 - (2.0 * t - 1.0).powi(2)) * 13.0 * scale;
-        let number_color = if tick >= 11 { AMBER } else { TEXT };
+        let curve = (1.0 - (2.0 * t - 1.0).powi(2)) * 18.0 * scale;
+        let number_color = if tick >= 14 {
+            RED
+        } else if tick >= 11 {
+            ACCENT
+        } else {
+            TEXT
+        };
         painter.line_segment(
             [
-                pos2(x, bar.bottom() - curve * 0.20),
-                pos2(x, bar.bottom() + 14.0 * scale),
+                pos2(x, bar.bottom() - curve * 0.08),
+                pos2(x, bar.bottom() + 13.0 * scale),
             ],
-            Stroke::new(0.8 * scale, Color32::from_rgb(155, 160, 160)),
+            Stroke::new(0.85 * scale, Color32::from_rgb(138, 145, 146)),
         );
         draw_number(
             painter,
-            pos2(x, bar.bottom() + 29.0 * scale),
+            pos2(x, bar.bottom() + 31.0 * scale),
             Align2::CENTER_CENTER,
             &tick.to_string(),
-            18.0 * scale,
+            24.0 * scale,
             number_color,
         );
     }
 
     draw_label(
         painter,
-        pos2(rect.center().x, rect.bottom() - 7.0 * scale),
+        pos2(rect.center().x, rect.bottom() - 12.0 * scale),
         Align2::CENTER_CENTER,
         "RPM x1000",
-        11.5 * scale,
+        20.0 * scale,
         TEXT_DIM,
     );
 }
@@ -1334,23 +1347,23 @@ fn draw_glow_number(
     draw_number(painter, pos, align, value, size, color);
 }
 
-fn rpm_segment_color(position: f32, active: bool) -> Color32 {
+fn rpm_segment_color(unit: f32, active: bool) -> Color32 {
     if !active {
-        return if position >= 0.88 {
+        return if unit >= 13.2 {
             Color32::from_rgb(70, 12, 12)
-        } else if position >= 0.70 {
+        } else if unit >= 10.2 {
             Color32::from_rgb(68, 34, 10)
         } else {
-            Color32::from_rgb(68, 73, 73)
+            Color32::from_rgb(65, 70, 70)
         };
     }
 
-    if position >= 0.88 {
+    if unit >= 13.2 {
         RED
-    } else if position >= 0.70 {
+    } else if unit >= 10.2 {
         ACCENT
     } else {
-        Color32::from_rgb(213, 216, 216)
+        Color32::from_rgb(219, 222, 222)
     }
 }
 
