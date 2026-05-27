@@ -17,15 +17,17 @@ const GREEN: Color32 = Color32::from_rgb(23, 224, 48);
 const AMBER: Color32 = Color32::from_rgb(255, 147, 19);
 const RED: Color32 = Color32::from_rgb(245, 28, 22);
 const MAGENTA: Color32 = Color32::from_rgb(230, 22, 178);
+const BACKGROUND_BYTES: &[u8] = include_bytes!("../../assets/native-hud-background.png");
 
 #[derive(Default)]
 pub struct HudRenderer {
     theme: HudTheme,
+    background: Option<egui::TextureHandle>,
 }
 
 impl HudRenderer {
     pub fn paint(
-        &self,
+        &mut self,
         painter: &egui::Painter,
         rect: Rect,
         state: &TelemetryUpdate,
@@ -35,7 +37,9 @@ impl HudRenderer {
         let layout = HudLayout::new(rect);
 
         painter.rect_filled(rect, 0.0, APP_BG);
-        DisplaySkin::new(&self.theme).paint(painter, &layout);
+        if !self.paint_background(painter, &layout) {
+            DisplaySkin::new(&self.theme).paint(painter, &layout);
+        }
         DynamicDisplay::new(&self.theme).paint(painter, &layout, &frame);
 
         if let Some(message) = frame.error.as_deref() {
@@ -43,6 +47,36 @@ impl HudRenderer {
         } else if frame.waiting {
             paint_waiting_strip(painter, layout.content, layout.scale);
         }
+    }
+
+    fn paint_background(&mut self, painter: &egui::Painter, layout: &HudLayout) -> bool {
+        let Some(texture) = self.background_texture(painter.ctx()) else {
+            return false;
+        };
+        let image_size = texture.size_vec2();
+        let image_rect = fit_aspect(layout.shell, image_size.x / image_size.y);
+        painter.image(
+            texture.id(),
+            image_rect,
+            Rect::from_min_max(pos2(0.0, 0.0), pos2(1.0, 1.0)),
+            Color32::WHITE,
+        );
+        true
+    }
+
+    fn background_texture(&mut self, ctx: &egui::Context) -> Option<&egui::TextureHandle> {
+        if self.background.is_none() {
+            let image = image::load_from_memory(BACKGROUND_BYTES).ok()?.to_rgba8();
+            let size = [image.width() as usize, image.height() as usize];
+            let pixels = image.into_raw();
+            let color_image = egui::ColorImage::from_rgba_unmultiplied(size, &pixels);
+            self.background = Some(ctx.load_texture(
+                "native-hud-background",
+                color_image,
+                egui::TextureOptions::LINEAR,
+            ));
+        }
+        self.background.as_ref()
     }
 }
 
@@ -794,23 +828,6 @@ fn paint_tyres_panel(painter: &egui::Painter, rect: Rect, frame: &TelemetryFrame
         Align2::RIGHT_CENTER,
         scale,
     );
-    draw_label(
-        painter,
-        pos2(rect.center().x - 12.0 * scale, rect.bottom() - 15.0 * scale),
-        Align2::CENTER_CENTER,
-        "McLaren",
-        24.0 * scale,
-        Color32::from_rgb(210, 214, 214),
-    );
-    painter.add(egui::Shape::convex_polygon(
-        vec![
-            pos2(rect.center().x + 63.0 * scale, rect.bottom() - 24.0 * scale),
-            pos2(rect.center().x + 88.0 * scale, rect.bottom() - 33.0 * scale),
-            pos2(rect.center().x + 76.0 * scale, rect.bottom() - 15.0 * scale),
-        ],
-        ACCENT,
-        Stroke::NONE,
-    ));
 }
 
 fn paint_ers_panel(painter: &egui::Painter, rect: Rect, frame: &TelemetryFrame, scale: f32) {
@@ -1483,10 +1500,23 @@ fn paint_center_message(
 fn paint_waiting_strip(painter: &egui::Painter, rect: Rect, scale: f32) {
     draw_label(
         painter,
-        pos2(rect.center().x, rect.bottom() - 12.0 * scale),
+        pos2(rect.center().x, rect.bottom() - 36.0 * scale),
         Align2::CENTER_CENTER,
         "WAITING FOR TELEMETRY",
         12.0 * scale,
         TEXT_DIM,
     );
+}
+
+#[cfg(test)]
+mod tests {
+    use super::BACKGROUND_BYTES;
+
+    #[test]
+    fn native_hud_background_asset_decodes() {
+        let image = image::load_from_memory(BACKGROUND_BYTES).expect("native HUD background PNG");
+
+        assert!(image.width() > 0);
+        assert!(image.height() > 0);
+    }
 }
