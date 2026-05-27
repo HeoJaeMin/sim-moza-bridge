@@ -109,9 +109,19 @@ struct TelemetryFrame {
     delta: String,
     front_gap: String,
     behind_gap: String,
-    flag: String,
+    flag: FlagLight,
     ers_mode: String,
     ers_pct: String,
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+enum FlagLight {
+    None,
+    Green,
+    Blue,
+    Yellow,
+    Red,
+    Oil,
 }
 
 impl TelemetryFrame {
@@ -172,7 +182,7 @@ impl TelemetryFrame {
                 .and_then(|lap| lap.delta_to_car_behind_ms)
                 .map(|value| format_gap_ms(value, '-'))
                 .unwrap_or(sample.behind_gap),
-            flag: flag_label(session, lap, &sample.flag),
+            flag: flag_light(session, lap, sample.flag),
             ers_mode: status
                 .map(|status| status.ers_deploy_mode.to_string())
                 .unwrap_or(sample.ers_mode),
@@ -201,9 +211,37 @@ impl TelemetryFrame {
             delta: "-00.50".to_owned(),
             front_gap: "+03.04".to_owned(),
             behind_gap: "-01.04".to_owned(),
-            flag: "Green".to_owned(),
+            flag: FlagLight::Green,
             ers_mode: "4".to_owned(),
             ers_pct: "56%".to_owned(),
+        }
+    }
+}
+
+impl FlagLight {
+    fn is_active(self) -> bool {
+        self != Self::None
+    }
+
+    fn color(self) -> Color32 {
+        match self {
+            Self::None => BAR_OFF,
+            Self::Green => Color32::from_rgb(22, 210, 70),
+            Self::Blue => Color32::from_rgb(45, 128, 255),
+            Self::Yellow => Color32::from_rgb(245, 214, 42),
+            Self::Red => Color32::from_rgb(236, 38, 38),
+            Self::Oil => Color32::from_rgb(255, 136, 28),
+        }
+    }
+
+    fn glow_color(self) -> Color32 {
+        match self {
+            Self::None => Color32::TRANSPARENT,
+            Self::Green => Color32::from_rgba_premultiplied(22, 210, 70, 42),
+            Self::Blue => Color32::from_rgba_premultiplied(45, 128, 255, 42),
+            Self::Yellow => Color32::from_rgba_premultiplied(245, 214, 42, 48),
+            Self::Red => Color32::from_rgba_premultiplied(236, 38, 38, 52),
+            Self::Oil => Color32::from_rgba_premultiplied(255, 136, 28, 48),
         }
     }
 }
@@ -260,7 +298,7 @@ fn paint_top_row(painter: &egui::Painter, rect: Rect, frame: &TelemetryFrame, sc
     paint_metric(painter, cells[0], &frame.speed, "KPH", 21.0, scale);
     paint_metric(painter, cells[1], &frame.last_lap, "Last Lap", 25.0, scale);
     paint_metric(painter, cells[2], &frame.delta, "Delta", 24.0, scale);
-    paint_metric(painter, cells[3], &frame.flag, "Flag", 18.0, scale);
+    paint_flag_indicator(painter, cells[3], frame.flag, scale);
     paint_metric(painter, cells[4], &frame.rpm, "RPM", 21.0, scale);
 }
 
@@ -392,6 +430,33 @@ fn paint_metric(
         rect.center() + vec2(0.0, 21.0 * scale),
         Align2::CENTER_CENTER,
         label,
+        10.0 * scale,
+        TEXT_DIM,
+    );
+}
+
+fn paint_flag_indicator(painter: &egui::Painter, rect: Rect, flag: FlagLight, scale: f32) {
+    let time = painter.ctx().input(|input| input.time);
+    let blink_on = !flag.is_active() || ((time * 2.4) as i64 % 2 == 0);
+    let center = rect.center() + vec2(0.0, -6.0 * scale);
+    let radius = 9.0 * scale;
+    let color = if blink_on {
+        flag.color()
+    } else {
+        Color32::from_rgb(8, 9, 9)
+    };
+
+    painter.circle_stroke(center, radius * 1.35, Stroke::new(1.0 * scale, LINE_DIM));
+    if blink_on && flag.is_active() {
+        painter.circle_filled(center, radius * 1.85, flag.glow_color());
+    }
+    painter.circle_filled(center, radius, color);
+
+    draw_label(
+        painter,
+        rect.center() + vec2(0.0, 21.0 * scale),
+        Align2::CENTER_CENTER,
+        "Flag",
         10.0 * scale,
         TEXT_DIM,
     );
@@ -537,15 +602,19 @@ fn gear_label(gear: i8) -> String {
     }
 }
 
-fn flag_label(session: Option<&SessionSample>, lap: Option<&LapSample>, fallback: &str) -> String {
+fn flag_light(
+    session: Option<&SessionSample>,
+    lap: Option<&LapSample>,
+    fallback: FlagLight,
+) -> FlagLight {
     let Some(session) = session else {
-        return fallback.to_owned();
+        return fallback;
     };
     let Some(lap) = lap else {
-        return fallback.to_owned();
+        return fallback;
     };
     if session.marshal_zones.is_empty() || session.track_length_m == 0 {
-        return fallback.to_owned();
+        return fallback;
     }
 
     let track_length = session.track_length_m as f32;
@@ -563,18 +632,19 @@ fn flag_label(session: Option<&SessionSample>, lap: Option<&LapSample>, fallback
         });
 
     current_zone
-        .map(|zone| marshal_flag_label(zone.flag).to_owned())
-        .unwrap_or_else(|| fallback.to_owned())
+        .map(|zone| marshal_flag_light(zone.flag))
+        .unwrap_or(fallback)
 }
 
-fn marshal_flag_label(flag: i8) -> &'static str {
+fn marshal_flag_light(flag: i8) -> FlagLight {
     match flag {
-        0 => "None",
-        1 => "Green",
-        2 => "Blue",
-        3 => "Yellow",
-        4 => "Red",
-        _ => "--",
+        0 => FlagLight::None,
+        1 => FlagLight::Green,
+        2 => FlagLight::Blue,
+        3 => FlagLight::Yellow,
+        4 => FlagLight::Red,
+        5 => FlagLight::Oil,
+        _ => FlagLight::None,
     }
 }
 
@@ -692,12 +762,20 @@ mod tests {
         let session = session_with_zones();
 
         assert_eq!(
-            flag_label(Some(&session), Some(&lap_at(600.0)), "--"),
-            "Yellow"
+            flag_light(Some(&session), Some(&lap_at(600.0)), FlagLight::None),
+            FlagLight::Yellow
         );
         assert_eq!(
-            flag_label(Some(&session), Some(&lap_at(100.0)), "--"),
-            "Red"
+            flag_light(Some(&session), Some(&lap_at(100.0)), FlagLight::None),
+            FlagLight::Red
         );
+    }
+
+    #[test]
+    fn maps_supported_flag_lights() {
+        assert_eq!(marshal_flag_light(1), FlagLight::Green);
+        assert_eq!(marshal_flag_light(3), FlagLight::Yellow);
+        assert_eq!(marshal_flag_light(4), FlagLight::Red);
+        assert_eq!(marshal_flag_light(5), FlagLight::Oil);
     }
 }
