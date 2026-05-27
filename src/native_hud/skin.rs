@@ -2,7 +2,7 @@ use eframe::egui::{
     self, Align2, Color32, FontFamily, FontId, Rect, Stroke, StrokeKind, pos2, vec2,
 };
 
-use crate::telemetry::{LapSample, SessionSample, StatusSample, TelemetryUpdate};
+use crate::telemetry::{DamageSample, LapSample, SessionSample, StatusSample, TelemetryUpdate};
 
 pub const APP_BG: Color32 = Color32::BLACK;
 pub const ACCENT: Color32 = Color32::from_rgb(245, 248, 248);
@@ -50,6 +50,7 @@ struct HudLayout {
     content: Rect,
     top: Rect,
     middle: Rect,
+    tyres: Rect,
     lower: Rect,
     sectors: Rect,
     scale: f32,
@@ -71,10 +72,14 @@ impl HudLayout {
         );
         let middle = Rect::from_min_max(
             pos2(content.left(), top.bottom()),
-            pos2(content.right(), content.top() + content.height() * 0.690),
+            pos2(content.right(), content.top() + content.height() * 0.635),
+        );
+        let tyres = Rect::from_min_max(
+            pos2(content.left(), middle.bottom()),
+            pos2(content.right(), content.top() + content.height() * 0.760),
         );
         let lower = Rect::from_min_max(
-            pos2(content.left(), middle.bottom()),
+            pos2(content.left(), tyres.bottom()),
             pos2(content.right(), content.top() + content.height() * 0.910),
         );
         let sectors =
@@ -85,6 +90,7 @@ impl HudLayout {
             content,
             top,
             middle,
+            tyres,
             lower,
             sectors,
             scale,
@@ -109,9 +115,24 @@ struct TelemetryFrame {
     delta: String,
     front_gap: String,
     behind_gap: String,
+    tyre_wear: TyreWearDisplay,
     flag: FlagLight,
     ers_mode: String,
     ers_pct: String,
+}
+
+#[derive(Clone, Debug, PartialEq)]
+struct TyreWearDisplay {
+    fl: TyreWearValue,
+    fr: TyreWearValue,
+    rl: TyreWearValue,
+    rr: TyreWearValue,
+}
+
+#[derive(Clone, Debug, PartialEq)]
+struct TyreWearValue {
+    text: String,
+    percent: Option<f32>,
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -129,6 +150,7 @@ impl TelemetryFrame {
         let sample = Self::sample(state.is_empty() && error.is_none(), error);
         let input = state.input.as_ref();
         let lap = state.lap.as_ref();
+        let damage = state.damage.as_ref();
         let status = state.status.as_ref();
         let session = state.session.as_ref();
         let waiting = state.is_empty() && error.is_none();
@@ -179,6 +201,7 @@ impl TelemetryFrame {
                 .and_then(|lap| lap.delta_to_car_behind_ms)
                 .map(|value| format_gap_ms(value, '-'))
                 .unwrap_or(sample.behind_gap),
+            tyre_wear: tyre_wear_display(damage),
             flag: flag_light(session, lap, sample.flag),
             ers_mode: status
                 .map(|status| status.ers_deploy_mode.to_string())
@@ -208,9 +231,38 @@ impl TelemetryFrame {
             delta: "--.--".to_owned(),
             front_gap: "--.--".to_owned(),
             behind_gap: "--.--".to_owned(),
+            tyre_wear: TyreWearDisplay::placeholder(),
             flag: FlagLight::None,
             ers_mode: "-".to_owned(),
             ers_pct: "--".to_owned(),
+        }
+    }
+}
+
+impl TyreWearDisplay {
+    fn placeholder() -> Self {
+        Self {
+            fl: TyreWearValue::placeholder(),
+            fr: TyreWearValue::placeholder(),
+            rl: TyreWearValue::placeholder(),
+            rr: TyreWearValue::placeholder(),
+        }
+    }
+}
+
+impl TyreWearValue {
+    fn placeholder() -> Self {
+        Self {
+            text: "--".to_owned(),
+            percent: None,
+        }
+    }
+
+    fn from_percent(value: f32) -> Self {
+        let percent = value.clamp(0.0, 100.0);
+        Self {
+            text: format!("{percent:.0}%"),
+            percent: Some(percent),
         }
     }
 }
@@ -285,6 +337,7 @@ impl<'a> DynamicDisplay<'a> {
         let painter = painter.with_clip_rect(layout.content);
         paint_top_row(&painter, layout.top, frame, layout.scale);
         paint_middle_grid(&painter, layout.middle, frame, layout.scale);
+        paint_tyre_wear_row(&painter, layout.tyres, frame, layout.scale);
         paint_lower_row(&painter, layout.lower, frame, layout.scale);
         paint_sector_bar(&painter, layout.sectors, frame.rpm_ratio, layout.scale);
     }
@@ -379,6 +432,43 @@ fn paint_middle_grid(painter: &egui::Painter, rect: Rect, frame: &TelemetryFrame
         &frame.lap_total,
         "Lap",
         scale,
+    );
+}
+
+fn paint_tyre_wear_row(painter: &egui::Painter, rect: Rect, frame: &TelemetryFrame, scale: f32) {
+    let cells = split_by_weights(rect, &[0.25, 0.25, 0.25, 0.25]);
+    for cell in &cells {
+        paint_box(painter, *cell, scale);
+    }
+
+    paint_tyre_wear_cell(painter, cells[0], &frame.tyre_wear.fl, "FL", scale);
+    paint_tyre_wear_cell(painter, cells[1], &frame.tyre_wear.fr, "FR", scale);
+    paint_tyre_wear_cell(painter, cells[2], &frame.tyre_wear.rl, "RL", scale);
+    paint_tyre_wear_cell(painter, cells[3], &frame.tyre_wear.rr, "RR", scale);
+}
+
+fn paint_tyre_wear_cell(
+    painter: &egui::Painter,
+    rect: Rect,
+    value: &TyreWearValue,
+    label: &str,
+    scale: f32,
+) {
+    draw_number(
+        painter,
+        rect.center() + vec2(0.0, -6.0 * scale),
+        Align2::CENTER_CENTER,
+        &value.text,
+        17.0 * scale,
+        tyre_wear_color(value.percent),
+    );
+    draw_label(
+        painter,
+        rect.center() + vec2(0.0, 21.0 * scale),
+        Align2::CENTER_CENTER,
+        label,
+        10.0 * scale,
+        TEXT_DIM,
     );
 }
 
@@ -596,6 +686,50 @@ fn gear_label(gear: i8) -> String {
     }
 }
 
+fn tyre_wear_display(damage: Option<&DamageSample>) -> TyreWearDisplay {
+    let Some(damage) = damage else {
+        return TyreWearDisplay::placeholder();
+    };
+    TyreWearDisplay {
+        fl: TyreWearValue::from_percent(damage.tyre_wear.fl),
+        fr: TyreWearValue::from_percent(damage.tyre_wear.fr),
+        rl: TyreWearValue::from_percent(damage.tyre_wear.rl),
+        rr: TyreWearValue::from_percent(damage.tyre_wear.rr),
+    }
+}
+
+fn tyre_wear_color(percent: Option<f32>) -> Color32 {
+    let Some(percent) = percent else {
+        return TEXT_DIM;
+    };
+    let percent = percent.clamp(0.0, 100.0);
+    if percent <= 50.0 {
+        lerp_color(
+            Color32::from_rgb(22, 210, 70),
+            Color32::from_rgb(245, 214, 42),
+            percent / 50.0,
+        )
+    } else {
+        lerp_color(
+            Color32::from_rgb(245, 214, 42),
+            Color32::from_rgb(236, 38, 38),
+            (percent - 50.0) / 50.0,
+        )
+    }
+}
+
+fn lerp_color(from: Color32, to: Color32, amount: f32) -> Color32 {
+    let amount = amount.clamp(0.0, 1.0);
+    let channel = |start: u8, end: u8| -> u8 {
+        (start as f32 + (end as f32 - start as f32) * amount).round() as u8
+    };
+    Color32::from_rgb(
+        channel(from.r(), to.r()),
+        channel(from.g(), to.g()),
+        channel(from.b(), to.b()),
+    )
+}
+
 fn flag_light(
     session: Option<&SessionSample>,
     lap: Option<&LapSample>,
@@ -691,7 +825,7 @@ fn paint_waiting_strip(painter: &egui::Painter, rect: Rect, scale: f32) {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::telemetry::MarshalZoneSample;
+    use crate::telemetry::{MarshalZoneSample, WheelValuesF32, WheelValuesU8};
 
     fn lap_at(distance_m: f32) -> LapSample {
         LapSample {
@@ -745,6 +879,32 @@ mod tests {
         }
     }
 
+    fn damage_with_wear(fl: f32, fr: f32, rl: f32, rr: f32) -> DamageSample {
+        DamageSample {
+            session_time: 0.0,
+            frame_identifier: 0,
+            player_car_index: 0,
+            tyre_wear: WheelValuesF32 { rl, rr, fl, fr },
+            tyre_damage: WheelValuesU8 {
+                rl: 0,
+                rr: 0,
+                fl: 0,
+                fr: 0,
+            },
+            tyre_blisters: WheelValuesU8 {
+                rl: 0,
+                rr: 0,
+                fl: 0,
+                fr: 0,
+            },
+            front_left_wing_damage: 0,
+            front_right_wing_damage: 0,
+            rear_wing_damage: 0,
+            gearbox_damage: 0,
+            engine_damage: 0,
+        }
+    }
+
     #[test]
     fn empty_snapshot_uses_placeholders_not_sample_numbers() {
         let frame = TelemetryFrame::from_update(&TelemetryUpdate::default(), None);
@@ -758,7 +918,31 @@ mod tests {
         assert_eq!(frame.last_lap, "--:--.--");
         assert_eq!(frame.front_gap, "--.--");
         assert_eq!(frame.behind_gap, "--.--");
+        assert_eq!(frame.tyre_wear.fl.text, "--");
+        assert_eq!(frame.tyre_wear.fl.percent, None);
         assert_eq!(frame.flag, FlagLight::None);
+    }
+
+    #[test]
+    fn displays_tyre_wear_from_damage_packet() {
+        let update = TelemetryUpdate {
+            damage: Some(damage_with_wear(12.0, 34.0, 56.0, 78.0)),
+            ..TelemetryUpdate::default()
+        };
+        let frame = TelemetryFrame::from_update(&update, None);
+
+        assert_eq!(frame.tyre_wear.fl.text, "12%");
+        assert_eq!(frame.tyre_wear.fr.text, "34%");
+        assert_eq!(frame.tyre_wear.rl.text, "56%");
+        assert_eq!(frame.tyre_wear.rr.text, "78%");
+    }
+
+    #[test]
+    fn tyre_wear_color_moves_from_green_to_red() {
+        assert_eq!(tyre_wear_color(Some(0.0)), Color32::from_rgb(22, 210, 70));
+        assert_eq!(tyre_wear_color(Some(50.0)), Color32::from_rgb(245, 214, 42));
+        assert_eq!(tyre_wear_color(Some(100.0)), Color32::from_rgb(236, 38, 38));
+        assert_eq!(tyre_wear_color(None), TEXT_DIM);
     }
 
     #[test]
