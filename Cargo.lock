@@ -2748,7 +2748,6 @@ name = "sim-moza-bridge"
 version = "0.2.0"
 dependencies = [
  "eframe",
- "image",
 ]
 
 [[package]]
