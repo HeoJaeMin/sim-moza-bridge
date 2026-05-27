@@ -211,7 +211,7 @@ impl TelemetryFrame {
             delta: "-00.50".to_owned(),
             front_gap: "+03.04".to_owned(),
             behind_gap: "-01.04".to_owned(),
-            flag: FlagLight::Green,
+            flag: FlagLight::None,
             ers_mode: "4".to_owned(),
             ers_pct: "56%".to_owned(),
         }
@@ -223,26 +223,31 @@ impl FlagLight {
         self != Self::None
     }
 
-    fn color(self) -> Color32 {
+    fn rgb(self) -> (u8, u8, u8) {
         match self {
-            Self::None => BAR_OFF,
-            Self::Green => Color32::from_rgb(22, 210, 70),
-            Self::Blue => Color32::from_rgb(45, 128, 255),
-            Self::Yellow => Color32::from_rgb(245, 214, 42),
-            Self::Red => Color32::from_rgb(236, 38, 38),
-            Self::Oil => Color32::from_rgb(255, 136, 28),
+            Self::None => (20, 22, 22),
+            Self::Green => (22, 210, 70),
+            Self::Blue => (45, 128, 255),
+            Self::Yellow => (245, 214, 42),
+            Self::Red => (236, 38, 38),
+            Self::Oil => (255, 136, 28),
         }
     }
 
-    fn glow_color(self) -> Color32 {
-        match self {
-            Self::None => Color32::TRANSPARENT,
-            Self::Green => Color32::from_rgba_premultiplied(22, 210, 70, 42),
-            Self::Blue => Color32::from_rgba_premultiplied(45, 128, 255, 42),
-            Self::Yellow => Color32::from_rgba_premultiplied(245, 214, 42, 48),
-            Self::Red => Color32::from_rgba_premultiplied(236, 38, 38, 52),
-            Self::Oil => Color32::from_rgba_premultiplied(255, 136, 28, 48),
-        }
+    fn color(self) -> Color32 {
+        let (red, green, blue) = self.rgb();
+        Color32::from_rgb(red, green, blue)
+    }
+
+    fn tint_color(self, alpha: u8) -> Color32 {
+        let (red, green, blue) = self.rgb();
+        let scale = u16::from(alpha);
+        Color32::from_rgba_premultiplied(
+            (u16::from(red) * scale / 255) as u8,
+            (u16::from(green) * scale / 255) as u8,
+            (u16::from(blue) * scale / 255) as u8,
+            alpha,
+        )
     }
 }
 
@@ -279,6 +284,7 @@ impl<'a> DynamicDisplay<'a> {
 
     fn paint(&self, painter: &egui::Painter, layout: &HudLayout, frame: &TelemetryFrame) {
         let _theme = self.theme;
+        paint_flag_wash(painter, layout.screen, frame.flag, layout.scale);
         let painter = painter.with_clip_rect(layout.content);
         paint_top_row(&painter, layout.top, frame, layout.scale);
         paint_middle_grid(&painter, layout.middle, frame, layout.scale);
@@ -288,18 +294,16 @@ impl<'a> DynamicDisplay<'a> {
 }
 
 fn paint_top_row(painter: &egui::Painter, rect: Rect, frame: &TelemetryFrame, scale: f32) {
-    let cells = split_by_weights(rect, &[0.16, 0.27, 0.22, 0.17, 0.18]);
+    let cells = split_by_weights(rect, &[0.18, 0.32, 0.28, 0.22]);
     paint_box(painter, cells[0], scale);
     paint_box(painter, cells[1], scale);
     paint_box(painter, cells[2], scale);
     paint_box(painter, cells[3], scale);
-    paint_box(painter, cells[4], scale);
 
     paint_metric(painter, cells[0], &frame.speed, "KPH", 21.0, scale);
     paint_metric(painter, cells[1], &frame.last_lap, "Last Lap", 25.0, scale);
     paint_metric(painter, cells[2], &frame.delta, "Delta", 24.0, scale);
-    paint_flag_indicator(painter, cells[3], frame.flag, scale);
-    paint_metric(painter, cells[4], &frame.rpm, "RPM", 21.0, scale);
+    paint_metric(painter, cells[3], &frame.rpm, "RPM", 21.0, scale);
 }
 
 fn paint_middle_grid(painter: &egui::Painter, rect: Rect, frame: &TelemetryFrame, scale: f32) {
@@ -435,30 +439,23 @@ fn paint_metric(
     );
 }
 
-fn paint_flag_indicator(painter: &egui::Painter, rect: Rect, flag: FlagLight, scale: f32) {
-    let time = painter.ctx().input(|input| input.time);
-    let blink_on = !flag.is_active() || ((time * 2.4) as i64 % 2 == 0);
-    let center = rect.center() + vec2(0.0, -6.0 * scale);
-    let radius = 9.0 * scale;
-    let color = if blink_on {
-        flag.color()
-    } else {
-        Color32::from_rgb(8, 9, 9)
-    };
-
-    painter.circle_stroke(center, radius * 1.35, Stroke::new(1.0 * scale, LINE_DIM));
-    if blink_on && flag.is_active() {
-        painter.circle_filled(center, radius * 1.85, flag.glow_color());
+fn paint_flag_wash(painter: &egui::Painter, rect: Rect, flag: FlagLight, scale: f32) {
+    if !flag.is_active() {
+        return;
     }
-    painter.circle_filled(center, radius, color);
 
-    draw_label(
-        painter,
-        rect.center() + vec2(0.0, 21.0 * scale),
-        Align2::CENTER_CENTER,
-        "Flag",
-        10.0 * scale,
-        TEXT_DIM,
+    let time = painter.ctx().input(|input| input.time);
+    let blink_on = (time * 2.4) as i64 % 2 == 0;
+    if !blink_on {
+        return;
+    }
+
+    painter.rect_filled(rect, 0.0, flag.tint_color(34));
+    painter.rect_stroke(
+        rect.shrink(2.0 * scale),
+        0.0,
+        Stroke::new(3.0 * scale, flag.color()),
+        StrokeKind::Inside,
     );
 }
 
