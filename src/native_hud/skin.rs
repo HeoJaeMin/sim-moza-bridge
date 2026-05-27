@@ -13,6 +13,7 @@ const TEXT_DIM: Color32 = Color32::from_rgb(152, 158, 158);
 const LINE: Color32 = Color32::from_rgba_premultiplied(244, 247, 247, 190);
 const LINE_DIM: Color32 = Color32::from_rgba_premultiplied(244, 247, 247, 92);
 const BAR_OFF: Color32 = Color32::from_rgb(20, 22, 22);
+const TYRE_WEAR_COLOR_STEPS: usize = 50;
 
 #[derive(Default)]
 pub struct HudRenderer {
@@ -702,7 +703,7 @@ fn tyre_wear_color(percent: Option<f32>) -> Color32 {
     let Some(percent) = percent else {
         return TEXT_DIM;
     };
-    let percent = percent.clamp(0.0, 100.0);
+    let percent = quantize_tyre_wear_percent(percent);
     if percent <= 50.0 {
         lerp_color(
             Color32::from_rgb(22, 210, 70),
@@ -716,6 +717,12 @@ fn tyre_wear_color(percent: Option<f32>) -> Color32 {
             (percent - 50.0) / 50.0,
         )
     }
+}
+
+fn quantize_tyre_wear_percent(percent: f32) -> f32 {
+    let max_step = (TYRE_WEAR_COLOR_STEPS - 1) as f32;
+    let step = (percent.clamp(0.0, 100.0) / 100.0 * max_step).round();
+    step / max_step * 100.0
 }
 
 fn lerp_color(from: Color32, to: Color32, amount: f32) -> Color32 {
@@ -940,9 +947,25 @@ mod tests {
     #[test]
     fn tyre_wear_color_moves_from_green_to_red() {
         assert_eq!(tyre_wear_color(Some(0.0)), Color32::from_rgb(22, 210, 70));
-        assert_eq!(tyre_wear_color(Some(50.0)), Color32::from_rgb(245, 214, 42));
+        assert_ne!(tyre_wear_color(Some(50.0)), Color32::from_rgb(22, 210, 70));
+        assert_ne!(tyre_wear_color(Some(50.0)), Color32::from_rgb(236, 38, 38));
         assert_eq!(tyre_wear_color(Some(100.0)), Color32::from_rgb(236, 38, 38));
         assert_eq!(tyre_wear_color(None), TEXT_DIM);
+    }
+
+    #[test]
+    fn tyre_wear_color_is_split_into_50_steps() {
+        let mut colors = Vec::new();
+        for step in 0..TYRE_WEAR_COLOR_STEPS {
+            let percent = step as f32 * 100.0 / (TYRE_WEAR_COLOR_STEPS - 1) as f32;
+            let color = tyre_wear_color(Some(percent));
+            colors.push((color.r(), color.g(), color.b()));
+        }
+
+        assert_eq!(colors.len(), TYRE_WEAR_COLOR_STEPS);
+        for pair in colors.windows(2) {
+            assert_ne!(pair[0], pair[1]);
+        }
     }
 
     #[test]
