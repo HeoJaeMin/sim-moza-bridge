@@ -1,7 +1,7 @@
 # HUD와 입력 로깅
 
 Rust 브리지는 F1 25의 `PacketCarTelemetryData`에서 플레이어 차량 입력 값을 추출하고, 랩/세션/상태/손상 패킷과 결합해 로컬 분석에 사용할 수 있습니다.
-현재 일반 실행 CLI는 F1 25 -> MOZA 전달에 집중하므로 CSV 로깅과 분석 옵션은 노출하지 않습니다. 브라우저 HUD는 기본 실행 때 자동으로 올라오고, 기본 브라우저로 열립니다.
+macOS/Windows에서는 native HUD가 기본 실행 때 자동으로 올라옵니다. CSV 로깅과 분석 파일은 필요할 때만 옵션으로 켭니다.
 
 현재 추출하는 주요 값:
 
@@ -25,19 +25,25 @@ Rust 브리지는 F1 25의 `PacketCarTelemetryData`에서 플레이어 차량 �
 
 CSV 행은 파일 끝에 추가됩니다. 파일이 없거나 비어 있으면 헤더를 먼저 기록하는 구현이 남아 있습니다.
 
-## 브라우저 HUD
-
-```text
-http://127.0.0.1:8765
+```bash
+cargo run -- --input-log inputs.csv --corner-log corners.csv
 ```
 
-HUD는 `/state`를 약 60Hz로 폴링하고 속도, 기어, RPM, REV LED, 입력 추적 그래프, 스로틀/브레이크/조향/클러치, 타이어 웨어/온도/압력, 브레이크 온도, 랩/섹터, 앞차/뒤차/선두 gap, 연료, ERS, DRS, 브레이크 바이어스, 타이어 컴파운드/수명, 윙/엔진/기어박스 손상을 표시합니다. 이 기능은 별도 옵션 없이 기본 `cargo run` 실행에서 켜집니다.
+## Native HUD
+
+macOS/Windows에서는 `eframe/egui` 기반 Rust native 창을 띄웁니다. 브리지 thread가 받은 telemetry를 같은 HUD state에 반영하고, native 창이 이 state를 직접 읽어 표시합니다.
+
+HUD는 속도, 기어, RPM, REV LED, 입력 추적, 스로틀/브레이크/조향/클러치, 타이어 웨어/온도/압력, 브레이크 온도, 랩/섹터, 앞차/뒤차/선두 gap, 연료, ERS, DRS, 브레이크 바이어스, 타이어 컴파운드/수명, 윙/엔진/기어박스 손상을 표시합니다. 이 기능은 별도 옵션 없이 기본 `cargo run` 실행에서 켜집니다.
 
 ## 랩 분석
 
 완료된 랩의 구간 요약을 기록할 수 있습니다. F1 세션의 트랙 길이를 사용할 수 있으면 한 랩을 거리 기준 20개 버킷으로 나눕니다.
 
 분석 리포트는 최신 완료 랩의 Markdown 스냅샷을 덮어쓰는 방식으로 구현되어 있습니다. 포함 내용:
+
+```bash
+cargo run -- --analysis-report analysis.md
+```
 
 - 클린 랩 여부
 - 랩 타임과 샘플 수
@@ -52,6 +58,5 @@ HUD는 `/state`를 약 60Hz로 폴링하고 속도, 기어, RPM, REV LED, 입력
 
 후속 후보:
 
-- 폴링 대신 WebSocket 또는 Server-Sent Events 전송 추가
 - 재사용 가능한 대시보드 레이아웃 파일 추가
 - 네이티브 ACE, ACR, LMU 입력 어댑터 추가

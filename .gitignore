@@ -2,6 +2,7 @@ node_modules/
 dist/
 coverage/
 target/
+.idea/
 .DS_Store
 *.log
 *.pcap

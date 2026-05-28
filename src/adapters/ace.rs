@@ -1,6 +1,7 @@
 #![cfg_attr(not(windows), allow(dead_code))]
 
 use crate::config::BridgeConfig;
+use crate::hud::HudHandle;
 use crate::telemetry::{
     DamageSample, InputSample, StatusSample, TelemetryUpdate, WheelValuesF32, WheelValuesU8,
     WheelValuesU16,
@@ -16,6 +17,7 @@ const TYRE_TEMP_OUTER_OFFSET: usize = 400;
 const UNKNOWN_TYRE_WEAR_PERCENT: f32 = -1.0;
 pub(crate) const ACE_PHYSICS_MIN_SIZE: usize = TYRE_TEMP_OUTER_OFFSET + 16;
 
+#[cfg_attr(any(target_os = "macos", target_os = "windows"), allow(dead_code))]
 pub fn start_ace_adapter(config: BridgeConfig) -> Result<(), String> {
     #[cfg(not(windows))]
     {
@@ -33,6 +35,32 @@ pub fn start_ace_adapter(config: BridgeConfig) -> Result<(), String> {
             ACE_MAPPING_NAME,
             ACE_PHYSICS_MIN_SIZE,
             parse_ace_update,
+        )
+    }
+}
+
+pub fn start_ace_adapter_with_hud(
+    config: BridgeConfig,
+    hud: Option<HudHandle>,
+) -> Result<(), String> {
+    #[cfg(not(windows))]
+    {
+        let _ = config;
+        let _ = hud;
+        return Err(format!(
+            "Assetto Corsa EVO adapter requires Windows shared memory ({ACE_MAPPING_NAME}); run this on the game PC"
+        ));
+    }
+
+    #[cfg(windows)]
+    {
+        super::run_shared_memory_adapter_with_hud(
+            config,
+            "Assetto Corsa EVO",
+            ACE_MAPPING_NAME,
+            ACE_PHYSICS_MIN_SIZE,
+            parse_ace_update,
+            hud,
         )
     }
 }

@@ -1,6 +1,7 @@
 #![cfg_attr(not(windows), allow(dead_code))]
 
 use crate::config::BridgeConfig;
+use crate::hud::HudHandle;
 use crate::telemetry::{
     DamageSample, InputSample, LapSample, StatusSample, TelemetryUpdate, WheelValuesF32,
     WheelValuesU8, WheelValuesU16,
@@ -45,6 +46,7 @@ const WHEEL_TEMP_OFFSET: usize = 128;
 const WHEEL_WEAR_OFFSET: usize = 152;
 const WHEEL_INNER_TEMP_OFFSET: usize = 212;
 
+#[cfg_attr(any(target_os = "macos", target_os = "windows"), allow(dead_code))]
 pub fn start_lmu_adapter(config: BridgeConfig) -> Result<(), String> {
     #[cfg(not(windows))]
     {
@@ -62,6 +64,32 @@ pub fn start_lmu_adapter(config: BridgeConfig) -> Result<(), String> {
             LMU_MAPPING_NAME,
             LMU_VIEW_SIZE,
             parse_lmu_update,
+        )
+    }
+}
+
+pub fn start_lmu_adapter_with_hud(
+    config: BridgeConfig,
+    hud: Option<HudHandle>,
+) -> Result<(), String> {
+    #[cfg(not(windows))]
+    {
+        let _ = config;
+        let _ = hud;
+        return Err(format!(
+            "Le Mans Ultimate adapter requires Windows shared memory ({LMU_MAPPING_NAME}); run this on the game PC with LMU shared memory enabled"
+        ));
+    }
+
+    #[cfg(windows)]
+    {
+        super::run_shared_memory_adapter_with_hud(
+            config,
+            "Le Mans Ultimate",
+            LMU_MAPPING_NAME,
+            LMU_VIEW_SIZE,
+            parse_lmu_update,
+            hud,
         )
     }
 }

@@ -23,7 +23,7 @@ Windows에서 기본 `cargo run`은 F1 UDP, `LMU_Data`, `Local\acevo_pmf_physics
 cargo run -- --listen 20777 --moza-port 22025
 ```
 
-브라우저 HUD는 기본 실행 때 `http://127.0.0.1:8765`로 같이 올라오고 기본 브라우저로 열립니다.
+HUD는 macOS/Windows에서 기본 실행 때 Rust native 창으로 같이 열립니다.
 
 ## 현재 동작
 

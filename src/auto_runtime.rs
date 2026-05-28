@@ -2,14 +2,14 @@
 
 use std::io;
 use std::net::UdpSocket;
-use std::process::Command;
 use std::thread;
 use std::time::{Duration, Instant};
 
 use crate::bridge::TelemetryBridge;
 use crate::config::BridgeConfig;
 use crate::games::{ACE, F1_25, LMU};
-use crate::hud::{HudHandle, start_hud_server};
+use crate::hud::HudHandle;
+use crate::logging::{TelemetryRecorder, print_enabled_outputs};
 use crate::telemetry::TelemetryUpdate;
 
 const UDP_BUFFER_SIZE: usize = 65_535;
@@ -26,7 +26,19 @@ enum RuntimeSource {
     Ace,
 }
 
+#[cfg_attr(any(target_os = "macos", target_os = "windows"), allow(dead_code))]
 pub fn start_auto_runtime(config: BridgeConfig) -> Result<(), String> {
+    run_auto_runtime(config, None)
+}
+
+pub fn start_auto_runtime_with_hud(
+    config: BridgeConfig,
+    hud: Option<HudHandle>,
+) -> Result<(), String> {
+    run_auto_runtime(config, hud)
+}
+
+fn run_auto_runtime(config: BridgeConfig, hud: Option<HudHandle>) -> Result<(), String> {
     let receiver = UdpSocket::bind(format!("{}:{}", config.listen_host, config.listen_port))
         .map_err(|error| format!("bind failed: {error}"))?;
     receiver
@@ -41,7 +53,7 @@ pub fn start_auto_runtime(config: BridgeConfig) -> Result<(), String> {
         config.fix_tyre_wear_order,
         config.f1_24_car_damage_compat,
     );
-    let hud = start_optional_hud(&config)?;
+    let mut recorder = TelemetryRecorder::open(&config)?;
     let mut buffer = vec![0_u8; UDP_BUFFER_SIZE];
     let mut source = RuntimeSource::Waiting;
     let mut frame_identifier = 0_u32;
@@ -71,7 +83,8 @@ pub fn start_auto_runtime(config: BridgeConfig) -> Result<(), String> {
             config.listen_host
         );
     }
-    print_optional_hud(&config);
+    print_enabled_outputs(&config);
+    print_optional_hud(hud.is_some());
 
     loop {
         while let Some(update) = receive_udp_update(
@@ -88,6 +101,9 @@ pub fn start_auto_runtime(config: BridgeConfig) -> Result<(), String> {
                 && !update.is_empty()
             {
                 hud.update(&update);
+            }
+            if !update.is_empty() {
+                recorder.ingest(&update, config.debug);
             }
         }
 
@@ -241,51 +257,12 @@ fn warn_periodically(last_warning: &mut Instant, message: &str) {
     }
 }
 
-fn start_optional_hud(config: &BridgeConfig) -> Result<Option<HudHandle>, String> {
-    config
-        .hud_http_port
-        .map(|port| start_hud_server(&config.hud_host, port))
-        .transpose()
-}
-
-fn print_optional_hud(config: &BridgeConfig) {
-    if let Some(port) = config.hud_http_port {
-        let hud_url = format!("http://{}:{port}", config.hud_host);
-        println!("HUD: {hud_url}");
-        if let Err(error) = open_browser(&hud_url) {
-            eprintln!("[warning] failed to open HUD in browser: {error}");
-        }
+fn print_optional_hud(enabled: bool) {
+    if enabled {
+        println!("HUD: native window");
     }
 }
 
 fn is_loopback_host(host: &str) -> bool {
     matches!(host, "127.0.0.1" | "localhost" | "::1")
-}
-
-fn open_browser(url: &str) -> Result<(), String> {
-    open_browser_command(url)
-        .spawn()
-        .map(|_| ())
-        .map_err(|error| error.to_string())
-}
-
-#[cfg(target_os = "windows")]
-fn open_browser_command(url: &str) -> Command {
-    let mut command = Command::new("cmd");
-    command.args(["/C", "start", "", url]);
-    command
-}
-
-#[cfg(target_os = "macos")]
-fn open_browser_command(url: &str) -> Command {
-    let mut command = Command::new("open");
-    command.arg(url);
-    command
-}
-
-#[cfg(all(unix, not(target_os = "macos")))]
-fn open_browser_command(url: &str) -> Command {
-    let mut command = Command::new("xdg-open");
-    command.arg(url);
-    command
 }
