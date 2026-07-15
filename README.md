@@ -80,6 +80,16 @@ cargo run -- --input-log inputs.csv --corner-log corners.csv --analysis-report a
 
 HUD에는 속도, 기어, RPM, REV LED, 입력 추적, 타이어/브레이크 상태, 앞차/뒤차/선두 gap, 연료, ERS, 손상 패널이 기본으로 표시됩니다.
 
+## LMU 레이싱 대시보드
+
+LMU용 트랙 맵, 전체 리더보드, 랩별 텔레메트리 저장, 접촉 기록을 한 화면에서 보는 별도 웹 대시보드를 실행할 수 있습니다.
+
+```powershell
+cargo run --bin lmu-dashboard -- --live
+```
+
+게임 없이 새 UI를 확인하려면 `--demo`를 사용합니다. 실행 방법, 태블릿 연결, 저장 위치와 접촉 판정의 한계는 [LMU 레이싱 대시보드 문서](docs/lmu-dashboard.md)에 정리되어 있습니다.
+
 ## 동작 방식
 
 브리지는 자동 감지 모드로 동작합니다.
@@ -110,6 +120,7 @@ HUD에는 속도, 기어, RPM, REV LED, 입력 추적, 타이어/브레이크 �
 - [F1 25 / MOZA 텔레메트리 매트릭스](docs/f1-25-moza-telemetry-matrix.md)
 - [MOZA 대시보드 바인딩 메모](docs/dashboard-binding.md)
 - [게임 어댑터 조사](docs/game-adapter-research.md)
+- [LMU 레이싱 대시보드](docs/lmu-dashboard.md)
 
 ## 안전 메모
 
