@@ -703,6 +703,7 @@ mod tests {
     }
 
     #[test]
+    #[allow(clippy::field_reassign_with_default)]
     fn does_not_recommend_setup_for_invalid_laps() {
         let mut analyzer = TelemetryAnalyzer::default();
         analyzer.current_points = vec![

@@ -439,9 +439,9 @@ pub fn start_acr_adapter(config: BridgeConfig) -> Result<(), String> {
     #[cfg(not(windows))]
     {
         let _ = config;
-        return Err(format!(
+        Err(format!(
             "Assetto Corsa Rally adapter requires Windows shared memory ({ACR_PHYSICS_MAPPING_NAME}); run this on the game PC"
-        ));
+        ))
     }
 
     #[cfg(windows)]
@@ -458,9 +458,9 @@ pub fn start_acr_adapter_with_hud(
     {
         let _ = config;
         let _ = hud;
-        return Err(format!(
+        Err(format!(
             "Assetto Corsa Rally adapter requires Windows shared memory ({ACR_PHYSICS_MAPPING_NAME}); run this on the game PC"
-        ));
+        ))
     }
 
     #[cfg(windows)]
@@ -502,7 +502,7 @@ fn run_acr_adapter(config: BridgeConfig, hud: Option<HudHandle>) -> Result<(), S
         .as_deref()
         .map(AcrCoachingLogger::open)
         .transpose()?;
-    let mut stage_tracker = AcrStageTracker::new(Instant::now());
+    let mut stage_tracker = AcrStageTracker::new(Instant::now(), None);
     let mut graphics = AcrGraphicsSnapshot::default();
     let mut statics = AcrStaticSnapshot::default();
     let mut context_key = String::new();
@@ -1233,6 +1233,10 @@ mod tests {
                 stage_number: 1,
                 elapsed_s: 12.5,
                 reset: false,
+                state: AcrStageState::Running,
+                event: AcrStageEvent::None,
+                official_time_ms: None,
+                max_distance_m: 778.2,
             },
             42,
         );
@@ -1280,9 +1284,19 @@ mod tests {
     #[test]
     fn detects_stage_distance_reset() {
         let start = Instant::now();
-        let mut tracker = AcrStageTracker::new(start);
-        let first = tracker.observe(1_200.0, start + Duration::from_secs(5));
-        let reset = tracker.observe(25.0, start + Duration::from_secs(10));
+        let mut tracker = AcrStageTracker::new(start, None);
+        let first = tracker.observe(
+            &stage_graphics(1_200.0),
+            40.0,
+            true,
+            start + Duration::from_secs(5),
+        );
+        let reset = tracker.observe(
+            &stage_graphics(25.0),
+            0.0,
+            true,
+            start + Duration::from_secs(10),
+        );
 
         assert_eq!(first.stage_number, 1);
         assert!(!first.reset);
@@ -1294,12 +1308,30 @@ mod tests {
     #[test]
     fn splits_recovery_that_jumps_back_mid_stage() {
         let start = Instant::now();
-        let mut tracker = AcrStageTracker::new(start);
-        tracker.observe(6_029.7, start + Duration::from_secs(5));
-        let recovery = tracker.observe(4_605.5, start + Duration::from_secs(6));
+        let mut tracker = AcrStageTracker::new(start, None);
+        tracker.observe(
+            &stage_graphics(6_029.7),
+            80.0,
+            true,
+            start + Duration::from_secs(5),
+        );
+        let recovery = tracker.observe(
+            &stage_graphics(4_605.5),
+            10.0,
+            true,
+            start + Duration::from_secs(6),
+        );
 
         assert_eq!(recovery.stage_number, 2);
         assert!(recovery.reset);
+    }
+
+    fn stage_graphics(distance_m: f32) -> AcrGraphicsSnapshot {
+        AcrGraphicsSnapshot {
+            distance_m,
+            status: 2,
+            ..AcrGraphicsSnapshot::default()
+        }
     }
 
     fn write_f32(bytes: &mut [u8], offset: usize, value: f32) {

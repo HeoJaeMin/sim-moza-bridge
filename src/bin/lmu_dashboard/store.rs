@@ -36,6 +36,7 @@ impl DashboardStore {
         Ok(store)
     }
 
+    #[allow(dead_code)]
     pub fn save_session(&self, session: &SessionState) -> Result<(), String> {
         self.save_session_with_source(session, "unknown")
     }
@@ -609,18 +610,10 @@ impl DashboardStore {
         for (table, column, definition) in [
             ("sessions", "signature", "TEXT NOT NULL DEFAULT ''"),
             ("sessions", "last_seen_ms", "INTEGER NOT NULL DEFAULT 0"),
-            (
-                "sessions",
-                "last_session_time_s",
-                "REAL NOT NULL DEFAULT 0",
-            ),
+            ("sessions", "last_session_time_s", "REAL NOT NULL DEFAULT 0"),
             ("sessions", "source", "TEXT NOT NULL DEFAULT ''"),
             ("sessions", "max_laps", "INTEGER NOT NULL DEFAULT 0"),
-            (
-                "sessions",
-                "track_length_m",
-                "REAL NOT NULL DEFAULT 0",
-            ),
+            ("sessions", "track_length_m", "REAL NOT NULL DEFAULT 0"),
             ("laps", "completed", "INTEGER NOT NULL DEFAULT 1"),
             ("laps", "quality_json", "TEXT NOT NULL DEFAULT '{}'"),
             ("laps", "logical_key", "TEXT"),
@@ -678,7 +671,9 @@ fn ensure_column(
         .map_err(|error| format!("failed to decode {table} columns: {error}"))?;
     if !columns.iter().any(|value| value == column) {
         connection
-            .execute_batch(&format!("ALTER TABLE {table} ADD COLUMN {column} {definition};"))
+            .execute_batch(&format!(
+                "ALTER TABLE {table} ADD COLUMN {column} {definition};"
+            ))
             .map_err(|error| format!("failed to add {table}.{column}: {error}"))?;
     }
     Ok(())
@@ -790,6 +785,7 @@ mod tests {
                 lap_number: 3,
                 lap_time_ms: 218_432,
                 valid: true,
+                quality: TraceQuality::default(),
                 sample_count: 1,
                 created_at_unix_ms: unix_ms(),
                 completed: true,

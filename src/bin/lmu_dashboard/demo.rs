@@ -269,7 +269,7 @@ mod tests {
         let frame = source.frame();
         assert_eq!(frame.vehicles.len(), 24);
         assert_eq!(frame.telemetry.len(), 24);
-        assert_eq!(frame.vehicles[PLAYER_INDEX].is_player, true);
+        assert!(frame.vehicles[PLAYER_INDEX].is_player);
         assert_eq!(frame.player.as_ref().unwrap().vehicle_id, 1_007);
         assert_eq!(frame.telemetry[0].vehicle_id, 1_000);
         assert!(frame.telemetry[0].rpm > 0.0);

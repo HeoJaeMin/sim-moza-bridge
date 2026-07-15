@@ -37,6 +37,7 @@ pub struct BridgeConfig {
     pub input_log: Option<String>,
     pub corner_log: Option<String>,
     pub analysis_report: Option<String>,
+    #[cfg_attr(not(any(target_os = "macos", target_os = "windows")), allow(dead_code))]
     pub headless: bool,
     pub dry_run: bool,
     pub debug: bool,
