@@ -2,11 +2,15 @@ use std::collections::{HashMap, VecDeque};
 
 use crate::contact::ContactDetector;
 use crate::lap::LapTracker;
-use crate::model::{LiveSnapshot, ParsedFrame, TraceResponse};
-use crate::store::{DashboardStore, track_key, unix_ms};
+use crate::model::{CaptureHealth, LiveSnapshot, ParsedFrame, TraceResponse};
+use crate::store::{DashboardStore, session_signature, track_key, unix_ms};
+use crate::telemetry_quality::TraceQuality;
 use crate::track::TrackMapper;
 
 const RECENT_CONTACT_LIMIT: usize = 50;
+const SESSION_RESUME_MAX_AGE_MS: u64 = 30 * 60 * 1_000;
+const SESSION_TOUCH_INTERVAL_MS: u64 = 1_000;
+const FRAME_RATE_WINDOW_MS: u64 = 5_000;
 
 pub struct EngineUpdate {
     pub live: LiveSnapshot,
@@ -24,7 +28,15 @@ pub struct DashboardEngine {
     session_signature: String,
     last_session_time_s: f64,
     last_session_created_at_ms: u64,
-    previous_frame_had_valid_session: bool,
+    last_session_touch_ms: u64,
+    session_resumed: bool,
+    accepted_frames: u64,
+    rejected_frames: u64,
+    duplicate_frames: u64,
+    invalid_session_frames: u64,
+    frame_times_ms: VecDeque<u64>,
+    last_frame_ms: u64,
+    last_player_session_time_s: Option<f64>,
     recent_contacts: VecDeque<crate::model::ContactEvent>,
     last_live: LiveSnapshot,
 }
@@ -46,14 +58,36 @@ impl DashboardEngine {
             session_signature: String::new(),
             last_session_time_s: 0.0,
             last_session_created_at_ms: 0,
-            previous_frame_had_valid_session: false,
+            last_session_touch_ms: 0,
+            session_resumed: false,
+            accepted_frames: 0,
+            rejected_frames: 0,
+            duplicate_frames: 0,
+            invalid_session_frames: 0,
+            frame_times_ms: VecDeque::new(),
+            last_frame_ms: 0,
+            last_player_session_time_s: None,
             recent_contacts,
             last_live: LiveSnapshot::default(),
         })
     }
 
     pub fn process(&mut self, mut frame: ParsedFrame) -> Result<EngineUpdate, String> {
-        self.update_session(&mut frame)?;
+        let now = unix_ms();
+        if !self.update_session(&mut frame, now)? {
+            self.invalid_session_frames = self.invalid_session_frames.saturating_add(1);
+            let mut live = self.last_live.clone();
+            live.connected = true;
+            live.source = self.source.clone();
+            live.warning = Some("waiting for a stable session frame".to_owned());
+            live.capture = self.capture_health(now, TraceQuality::default(), "degraded");
+            self.last_live = live.clone();
+            return Ok(EngineUpdate {
+                live,
+                trace: self.player_trace(),
+            });
+        }
+        self.register_frame(&frame, now);
         let track_points = self.track_mapper.update(&frame)?;
 
         for contact in self.contact_detector.detect(&frame) {
@@ -90,7 +124,12 @@ impl DashboardEngine {
             }
             let tracker = self.lap_trackers.entry(vehicle.id).or_insert_with(|| {
                 let mut tracker = LapTracker::default();
-                tracker.reset(&self.session_id, &frame.session.track_name);
+                tracker.reset(
+                    &self.session_id,
+                    &frame.session.track_name,
+                    &frame.session.session_type,
+                    frame.session.track_length_m,
+                );
                 tracker
             });
             if let Some(lap) = tracker.ingest(
@@ -110,6 +149,10 @@ impl DashboardEngine {
             .player_vehicle_id
             .and_then(|vehicle_id| self.lap_trackers.get(&vehicle_id))
             .and_then(LapTracker::current_info);
+        let current_quality = current_lap
+            .as_ref()
+            .map(|lap| lap.quality.clone())
+            .unwrap_or_default();
         let live = LiveSnapshot {
             connected: true,
             source: self.source.clone(),
@@ -120,61 +163,137 @@ impl DashboardEngine {
             track_points,
             recent_contacts: self.recent_contacts.iter().cloned().collect(),
             current_lap,
+            capture: self.capture_health(now, current_quality, "live"),
         };
         self.last_live = live.clone();
         Ok(EngineUpdate { live, trace })
     }
 
     pub fn disconnected(&mut self, warning: impl Into<String>) -> EngineUpdate {
+        self.rejected_frames = self.rejected_frames.saturating_add(1);
         let mut live = self.last_live.clone();
         live.connected = false;
         live.source = self.source.clone();
         live.warning = Some(warning.into());
+        let quality = live
+            .current_lap
+            .as_ref()
+            .map(|lap| lap.quality.clone())
+            .unwrap_or_default();
+        live.capture = self.capture_health(unix_ms(), quality, "disconnected");
         EngineUpdate {
             live,
             trace: self.player_trace(),
         }
     }
 
-    fn update_session(&mut self, frame: &mut ParsedFrame) -> Result<(), String> {
-        let signature = format!(
-            "{}:{}",
-            track_key(&frame.session.track_name, frame.session.track_length_m),
-            frame.session.session_type
-        );
+    fn update_session(&mut self, frame: &mut ParsedFrame, now: u64) -> Result<bool, String> {
+        let signature = session_signature(&frame.session);
         let time_reset = frame.session.current_time_s + 5.0 < self.last_session_time_s;
         let valid_session = frame.session.track_length_m >= 100.0 && !frame.vehicles.is_empty();
         if !valid_session {
-            frame.session.id.clear();
-            self.previous_frame_had_valid_session = false;
-            return Ok(());
+            frame.session.id.clone_from(&self.session_id);
+            return Ok(false);
         }
-        let new_session = valid_session
-            && (self.session_id.is_empty()
-                || !self.previous_frame_had_valid_session
-                || self.session_signature != signature
-                || time_reset);
+        let mut new_session = self.session_signature != signature || time_reset;
+        if self.session_id.is_empty() {
+            if let Some(resume) = self.store.resumable_session(
+                &signature,
+                frame.session.current_time_s,
+                SESSION_RESUME_MAX_AGE_MS,
+            )? {
+                self.session_id = resume.id;
+                self.last_session_time_s = resume.last_session_time_s;
+                self.session_signature.clone_from(&signature);
+                self.session_resumed = true;
+                self.last_session_touch_ms = now;
+                frame.session.id.clone_from(&self.session_id);
+                self.store
+                    .save_session_with_source(&frame.session, &self.source)?;
+                new_session = false;
+            } else {
+                new_session = true;
+            }
+        }
 
         if new_session {
             self.last_session_created_at_ms =
-                unix_ms().max(self.last_session_created_at_ms.saturating_add(1));
+                now.max(self.last_session_created_at_ms.saturating_add(1));
             self.session_id = format!(
                 "{}-{}",
                 track_key(&frame.session.track_name, frame.session.track_length_m),
                 self.last_session_created_at_ms
             );
             self.session_signature = signature;
+            self.session_resumed = false;
             self.contact_detector.reset();
             self.lap_trackers.clear();
             self.player_vehicle_id = None;
             frame.session.id = self.session_id.clone();
-            self.store.save_session(&frame.session)?;
+            self.store
+                .save_session_with_source(&frame.session, &self.source)?;
+            self.last_session_touch_ms = now;
         } else {
             frame.session.id = self.session_id.clone();
+            if now.saturating_sub(self.last_session_touch_ms) >= SESSION_TOUCH_INTERVAL_MS {
+                self.store.touch_session(&frame.session)?;
+                self.last_session_touch_ms = now;
+            }
         }
         self.last_session_time_s = frame.session.current_time_s;
-        self.previous_frame_had_valid_session = true;
-        Ok(())
+        Ok(true)
+    }
+
+    fn register_frame(&mut self, frame: &ParsedFrame, now: u64) {
+        self.accepted_frames = self.accepted_frames.saturating_add(1);
+        self.last_frame_ms = now;
+        self.frame_times_ms.push_back(now);
+        while self
+            .frame_times_ms
+            .front()
+            .is_some_and(|timestamp| now.saturating_sub(*timestamp) > FRAME_RATE_WINDOW_MS)
+        {
+            self.frame_times_ms.pop_front();
+        }
+        if let Some(session_time_s) = frame.player.as_ref().map(|player| player.session_time_s) {
+            if self
+                .last_player_session_time_s
+                .is_some_and(|previous| session_time_s <= previous + f64::EPSILON)
+            {
+                self.duplicate_frames = self.duplicate_frames.saturating_add(1);
+            }
+            self.last_player_session_time_s = Some(session_time_s);
+        }
+    }
+
+    fn capture_health(
+        &self,
+        now: u64,
+        current_quality: TraceQuality,
+        state: &str,
+    ) -> CaptureHealth {
+        let sample_rate_hz = match (self.frame_times_ms.front(), self.frame_times_ms.back()) {
+            (Some(first), Some(last)) if last > first => {
+                (self.frame_times_ms.len().saturating_sub(1)) as f64 * 1_000.0
+                    / last.saturating_sub(*first) as f64
+            }
+            _ => 0.0,
+        };
+        CaptureHealth {
+            state: state.to_owned(),
+            sample_rate_hz: (sample_rate_hz * 10.0).round() / 10.0,
+            accepted_frames: self.accepted_frames,
+            rejected_frames: self.rejected_frames,
+            duplicate_frames: self.duplicate_frames,
+            invalid_session_frames: self.invalid_session_frames,
+            last_frame_age_ms: if self.last_frame_ms == 0 {
+                0
+            } else {
+                now.saturating_sub(self.last_frame_ms)
+            },
+            session_resumed: self.session_resumed,
+            current_quality,
+        }
     }
 
     fn player_trace(&self) -> TraceResponse {

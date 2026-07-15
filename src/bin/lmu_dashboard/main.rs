@@ -1,3 +1,4 @@
+mod coach;
 mod contact;
 mod demo;
 mod engine;
@@ -7,6 +8,9 @@ mod parser;
 mod server;
 mod store;
 mod track;
+
+#[path = "../../telemetry_quality.rs"]
+mod telemetry_quality;
 
 #[cfg(windows)]
 #[path = "../../adapters/shared_memory.rs"]
@@ -27,6 +31,12 @@ use server::DashboardState;
 use store::DashboardStore;
 
 const LMU_MAPPING_NAME: &str = "LMU_Data";
+#[cfg(windows)]
+const LMU_STABILITY_MARKERS: [shared_memory::StabilityMarker; 3] = [
+    shared_memory::StabilityMarker::new(1_700, 8),
+    shared_memory::StabilityMarker::new(1_736, 4),
+    shared_memory::StabilityMarker::new(128_464, 3),
+];
 const POLL_INTERVAL: Duration = Duration::from_millis(50);
 #[cfg(windows)]
 const WARNING_INTERVAL: Duration = Duration::from_secs(2);
@@ -36,6 +46,7 @@ struct DashboardConfig {
     listen: SocketAddr,
     data_dir: PathBuf,
     demo: bool,
+    coach_report: Option<PathBuf>,
 }
 
 #[tokio::main]
@@ -59,7 +70,6 @@ async fn main() {
         );
         std::process::exit(1);
     }
-
     let store = match DashboardStore::open(&config.data_dir) {
         Ok(store) => store,
         Err(error) => {
@@ -68,6 +78,10 @@ async fn main() {
         }
     };
     let state = DashboardState::new(store.clone());
+    if let Some(report_path) = config.coach_report.clone() {
+        println!("qualifying coaching: {}", report_path.display());
+        tokio::spawn(coach::run(store.clone(), report_path));
+    }
     let collector_state = state.clone();
     let demo = config.demo;
     tokio::spawn(async move {
@@ -131,13 +145,26 @@ async fn collect_lmu(store: DashboardStore, state: DashboardState) {
     };
     let mut interval = tokio::time::interval(POLL_INTERVAL);
     let mut last_warning = Instant::now() - WARNING_INTERVAL;
+    let mut reader = None;
     loop {
         interval.tick().await;
-        let result = shared_memory::read_mapping(LMU_MAPPING_NAME, LMU_VIEW_SIZE)
-            .and_then(|snapshot| parse_lmu_snapshot(&snapshot));
+        let snapshot = (|| {
+            if reader.is_none() {
+                reader = Some(shared_memory::SharedMemoryReader::open(
+                    LMU_MAPPING_NAME,
+                    LMU_VIEW_SIZE,
+                )?);
+            }
+            reader
+                .as_ref()
+                .expect("LMU shared-memory reader was initialized")
+                .read_consistent(&LMU_STABILITY_MARKERS)
+        })();
+        let result = snapshot.and_then(|snapshot| parse_lmu_snapshot(&snapshot));
         match result.and_then(|frame| engine.process(frame)) {
             Ok(update) => state.publish(update.live, update.trace).await,
             Err(error) => {
+                reader = None;
                 if last_warning.elapsed() >= WARNING_INTERVAL {
                     eprintln!("[adapter-warning] {error}");
                     last_warning = Instant::now();
@@ -161,6 +188,7 @@ where
         .expect("default dashboard address must be valid");
     let mut data_dir = PathBuf::from("lmu-dashboard-data");
     let mut demo = !cfg!(windows);
+    let mut coach_report = None;
     let mut iterator = arguments.into_iter();
     while let Some(argument) = iterator.next() {
         match argument.as_str() {
@@ -175,6 +203,9 @@ where
             }
             "--demo" => demo = true,
             "--live" => demo = false,
+            "--coach-report" => {
+                coach_report = Some(PathBuf::from(next_value(&mut iterator, "--coach-report")?));
+            }
             unknown => return Err(format!("unknown option {unknown}")),
         }
     }
@@ -182,6 +213,7 @@ where
         listen,
         data_dir,
         demo,
+        coach_report,
     })
 }
 
@@ -202,6 +234,7 @@ fn help_text() -> &'static str {
        --data-dir <path>   SQLite data directory (default: lmu-dashboard-data)\n\
        --demo              Run without LMU using generated race data\n\
        --live              Read LMU_Data on the Windows game PC\n\
+       --coach-report <p>  Write qualifying P1 comparison to Markdown and JSON\n\
        --help              Show this help\n\n\
      Tablet example: --listen 0.0.0.0:8787"
 }
@@ -223,6 +256,23 @@ mod tests {
         assert_eq!(config.listen, "0.0.0.0:9000".parse().unwrap());
         assert_eq!(config.data_dir, PathBuf::from("telemetry"));
         assert!(config.demo);
+        assert_eq!(config.coach_report, None);
+    }
+
+    #[test]
+    fn parses_coaching_report() {
+        let config = parse_config([
+            "--live".to_owned(),
+            "--coach-report".to_owned(),
+            "reports/qualifying.md".to_owned(),
+        ])
+        .unwrap();
+
+        assert!(!config.demo);
+        assert_eq!(
+            config.coach_report,
+            Some(PathBuf::from("reports/qualifying.md"))
+        );
     }
 
     #[test]
@@ -234,6 +284,11 @@ mod tests {
         );
         assert!(
             parse_config(["--data-dir".to_owned()])
+                .unwrap_err()
+                .contains("requires a value")
+        );
+        assert!(
+            parse_config(["--coach-report".to_owned()])
                 .unwrap_err()
                 .contains("requires a value")
         );

@@ -63,6 +63,7 @@ pub fn start_lmu_adapter(config: BridgeConfig) -> Result<(), String> {
             "Le Mans Ultimate",
             LMU_MAPPING_NAME,
             LMU_VIEW_SIZE,
+            &super::LMU_STABILITY_MARKERS,
             parse_lmu_update,
         )
     }
@@ -88,6 +89,7 @@ pub fn start_lmu_adapter_with_hud(
             "Le Mans Ultimate",
             LMU_MAPPING_NAME,
             LMU_VIEW_SIZE,
+            &super::LMU_STABILITY_MARKERS,
             parse_lmu_update,
             hud,
         )

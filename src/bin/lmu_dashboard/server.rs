@@ -6,6 +6,7 @@ use axum::http::{StatusCode, header};
 use axum::response::{Html, IntoResponse, Response};
 use axum::routing::get;
 use axum::{Json, Router};
+use tokio::net::TcpListener;
 use tokio::sync::RwLock;
 
 use crate::model::{LiveSnapshot, TraceResponse};
@@ -38,6 +39,13 @@ impl DashboardState {
 }
 
 pub async fn serve(address: SocketAddr, state: DashboardState) -> Result<(), String> {
+    let listener = TcpListener::bind(address)
+        .await
+        .map_err(|error| format!("failed to bind dashboard to {address}: {error}"))?;
+    serve_listener(listener, state).await
+}
+
+pub async fn serve_listener(listener: TcpListener, state: DashboardState) -> Result<(), String> {
     let app = Router::new()
         .route("/", get(index))
         .route("/app.js", get(app_js))
@@ -49,9 +57,6 @@ pub async fn serve(address: SocketAddr, state: DashboardState) -> Result<(), Str
         .route("/api/contacts", get(contacts))
         .route("/api/health", get(health))
         .with_state(state);
-    let listener = tokio::net::TcpListener::bind(address)
-        .await
-        .map_err(|error| format!("failed to bind dashboard to {address}: {error}"))?;
     axum::serve(listener, app)
         .with_graceful_shutdown(shutdown_signal())
         .await

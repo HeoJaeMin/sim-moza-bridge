@@ -11,6 +11,7 @@ mod logging;
 #[cfg(any(target_os = "macos", target_os = "windows"))]
 mod native_hud;
 mod telemetry;
+mod telemetry_quality;
 mod udp;
 
 use games::ProtocolKind;
@@ -39,7 +40,11 @@ fn main() {
 
 #[cfg(any(target_os = "macos", target_os = "windows"))]
 fn start(config: config::BridgeConfig) -> Result<(), String> {
-    native_hud::run(config)
+    if config.headless {
+        start_runtime(config)
+    } else {
+        native_hud::run(config)
+    }
 }
 
 #[cfg(not(any(target_os = "macos", target_os = "windows")))]
@@ -47,16 +52,13 @@ fn start(config: config::BridgeConfig) -> Result<(), String> {
     start_runtime(config)
 }
 
-#[cfg(not(any(target_os = "macos", target_os = "windows")))]
 fn start_runtime(config: config::BridgeConfig) -> Result<(), String> {
     match config.game.protocol {
         ProtocolKind::Auto => auto_runtime::start_auto_runtime(config),
         ProtocolKind::F1_25 | ProtocolKind::OpaqueUdp => udp::start_udp_bridge(config),
         ProtocolKind::AssettoCorsaEvo => adapters::ace::start_ace_adapter(config),
         ProtocolKind::LeMansUltimate => adapters::lmu::start_lmu_adapter(config),
-        ProtocolKind::AssettoCorsaRally => {
-            Err("Assetto Corsa Rally adapter is not implemented yet".to_owned())
-        }
+        ProtocolKind::AssettoCorsaRally => adapters::acr::start_acr_adapter(config),
     }
 }
 
@@ -72,8 +74,6 @@ pub(crate) fn start_runtime_with_hud(
         }
         ProtocolKind::AssettoCorsaEvo => adapters::ace::start_ace_adapter_with_hud(config, hud),
         ProtocolKind::LeMansUltimate => adapters::lmu::start_lmu_adapter_with_hud(config, hud),
-        ProtocolKind::AssettoCorsaRally => {
-            Err("Assetto Corsa Rally adapter is not implemented yet".to_owned())
-        }
+        ProtocolKind::AssettoCorsaRally => adapters::acr::start_acr_adapter_with_hud(config, hud),
     }
 }

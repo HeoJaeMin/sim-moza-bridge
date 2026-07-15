@@ -1,6 +1,6 @@
 # 확정 텔레메트리 매핑
 
-확인일: 2026-05-19
+확인일: 2026-07-15
 
 이 문서는 지금까지 모은 자료와 현재 코드 기준으로 방어 가능한 값만 매핑합니다.
 
@@ -156,7 +156,19 @@ LU/LMU 원본 어댑터는 아직 구현되지 않았으므로 원본 필드는 
 | 모션/맵 | `Pitch`, `Roll`, `MapName`, `CarCoordinates01`, `CarCoordinates02`, `CarCoordinates03`, `TrackLength`, `TrackId`, `TrackPositionPercent`, `Location` |
 | 식별 정보 | `CarId`, `PlayerName`, `CarModel`, `Gamename` |
 
-## ACE / ACR 매핑 경계
+## ACR 로컬 공유 메모리 매핑
+
+2026-07-15 실행 중인 ACR에서 다음 로컬 파일 매핑을 직접 읽어 확인했습니다.
+
+| 매핑 | 최소 읽기 크기 | 현재 사용 범위 |
+| --- | ---: | --- |
+| `Local\acpmf_physics` | 800 | 입력, 동역학, 휠/타이어/브레이크, 연료/상태 |
+| `Local\acpmf_graphics` | 1588 | 스테이지 누적 거리와 그래픽 패킷 ID |
+| `Local\acpmf_static` | 784 | 트랙/차량 이름과 트랙 스플라인 길이 |
+
+`physics`의 속도/RPM/기어/입력, G, 로컬 속도, 휠 슬립/하중/회전속도, 슬립 비율/각도, 서스펜션, 압력/온도, 브레이크, 연료/상태 값이 라이브에서 갱신되는 것을 확인했습니다. ACR 온도 채널은 이번 검증에서 Kelvin이었으므로 로컬 HUD/CSV에서는 섭씨로 정규화합니다. `graphics.distanceTraveled`와 `static.trackSplineLength`를 스테이지 거리와 길이로 사용합니다.
+
+## ACE / ACR Pit House 매핑 경계
 
 ACE와 ACR은 아직 Pit House key로 매핑하지 않습니다.
 
@@ -164,7 +176,7 @@ ACE와 ACR은 아직 Pit House key로 매핑하지 않습니다.
 
 - MOZA 게임 호환 목록은 두 게임 모두 텔레메트리 지원으로 표시합니다.
 - Digital Dash 키 매트릭스에는 `Assetto Corsa EVO` 또는 `Assetto Corsa Rally` 전용 컬럼이 없습니다.
-- ACE는 공유 메모리 텔레메트리를 가리키고, ACR은 네이티브/보조 리더 경로를 가리킵니다.
+- ACE와 ACR 모두 현재 로컬 공유 메모리 입력 경로가 확인되어 있습니다.
 
 따라서:
 
@@ -177,4 +189,4 @@ ACE와 ACR은 아직 Pit House key로 매핑하지 않습니다.
 1. 위 F1 파싱 값을 로컬 HUD/API용 정규화 `gameData` 맵으로 연결합니다.
 2. F1 `Gap`은 Pit House에서 F1 지원 키가 확인되기 전까지 `local-only`로 유지합니다.
 3. LU/LMU는 MOZA 키 지원이 확인되어 있으므로 `output-only` 키 그룹을 먼저 어댑터 대상으로 구현합니다.
-4. ACE/ACR은 공유 메모리 구조체 이름이나 필드 오프셋을 하드코딩하기 전에 탐지 절차를 먼저 추가합니다.
+4. ACE/ACR은 게임 업데이트마다 라이브 값과 크기를 재검증하고, 불확실한 필드는 Pit House가 아니라 로컬 기록에 유지합니다.

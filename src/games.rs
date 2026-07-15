@@ -104,8 +104,8 @@ pub const ACR: GameProfile = GameProfile {
     supports_udp_bridge: false,
     supports_tyre_wear_order_fix: false,
     notes: &[
-        "MOZA lists telemetry support for ACR, but the digital-dash key matrix does not expose an ACR-specific column yet.",
-        "Public overlay tooling points to a native/helper memory reader path rather than F1-style UDP packets.",
+        "ACR exposes ACC-compatible local physics, graphics, and static shared-memory mappings.",
+        "The current adapter reads those mappings for HUD telemetry and high-rate coaching logs.",
     ],
 };
 

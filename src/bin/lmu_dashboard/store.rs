@@ -8,6 +8,13 @@ use crate::model::{
     ContactConfidence, ContactEvent, ContactParticipant, LapSummary, SavedLap, SessionState,
     TelemetryPoint, TrackPoint,
 };
+use crate::telemetry_quality::{TraceQuality, TraceQualityStatus};
+
+#[derive(Clone, Debug, PartialEq)]
+pub struct ResumableSession {
+    pub id: String,
+    pub last_session_time_s: f64,
+}
 
 #[derive(Clone, Debug)]
 pub struct DashboardStore {
@@ -30,22 +37,77 @@ impl DashboardStore {
     }
 
     pub fn save_session(&self, session: &SessionState) -> Result<(), String> {
+        self.save_session_with_source(session, "unknown")
+    }
+
+    pub fn save_session_with_source(
+        &self,
+        session: &SessionState,
+        source: &str,
+    ) -> Result<(), String> {
+        let now = unix_ms() as i64;
         self.connection()?
             .execute(
-                "INSERT OR IGNORE INTO sessions
-                 (id, started_at_ms, track_key, track_name, session_type, game_version)
-                 VALUES (?1, ?2, ?3, ?4, ?5, ?6)",
+                "INSERT INTO sessions
+                 (id, started_at_ms, track_key, track_name, session_type, game_version,
+                  signature, last_seen_ms, last_session_time_s, source, max_laps, track_length_m)
+                 VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12)
+                 ON CONFLICT(id) DO UPDATE SET
+                    last_seen_ms = excluded.last_seen_ms,
+                    last_session_time_s = excluded.last_session_time_s,
+                    source = excluded.source",
                 params![
                     session.id,
-                    unix_ms() as i64,
+                    now,
                     track_key(&session.track_name, session.track_length_m),
                     session.track_name,
                     session.session_type,
                     session.game_version,
+                    session_signature(session),
+                    now,
+                    session.current_time_s,
+                    source,
+                    session.max_laps,
+                    session.track_length_m,
                 ],
             )
             .map_err(|error| format!("failed to save LMU session: {error}"))?;
         Ok(())
+    }
+
+    pub fn touch_session(&self, session: &SessionState) -> Result<(), String> {
+        self.connection()?
+            .execute(
+                "UPDATE sessions SET last_seen_ms = ?2, last_session_time_s = ?3 WHERE id = ?1",
+                params![session.id, unix_ms() as i64, session.current_time_s],
+            )
+            .map_err(|error| format!("failed to update session heartbeat: {error}"))?;
+        Ok(())
+    }
+
+    pub fn resumable_session(
+        &self,
+        signature: &str,
+        current_time_s: f64,
+        max_age_ms: u64,
+    ) -> Result<Option<ResumableSession>, String> {
+        let cutoff = unix_ms().saturating_sub(max_age_ms) as i64;
+        self.connection()?
+            .query_row(
+                "SELECT id, last_session_time_s FROM sessions
+                 WHERE signature = ?1 AND last_seen_ms >= ?2
+                   AND last_session_time_s <= ?3 + 5.0
+                 ORDER BY last_seen_ms DESC LIMIT 1",
+                params![signature, cutoff, current_time_s],
+                |row| {
+                    Ok(ResumableSession {
+                        id: row.get(0)?,
+                        last_session_time_s: row.get(1)?,
+                    })
+                },
+            )
+            .optional()
+            .map_err(|error| format!("failed to find resumable session: {error}"))
     }
 
     pub fn save_lap(&self, lap: &SavedLap) -> Result<(), String> {
@@ -53,12 +115,18 @@ impl DashboardStore {
         let transaction = connection
             .transaction()
             .map_err(|error| format!("failed to start lap transaction: {error}"))?;
+        let quality_json = serde_json::to_string(&lap.summary.quality)
+            .map_err(|error| format!("failed to encode lap quality: {error}"))?;
+        let logical_key = format!(
+            "{}:{}:{}",
+            lap.summary.session_id, lap.summary.vehicle_id, lap.summary.lap_number
+        );
         transaction
             .execute(
                 "INSERT OR REPLACE INTO laps
                  (id, session_id, track_name, lap_number, lap_time_ms, valid, sample_count,
-                  created_at_ms)
-                 VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)",
+                  created_at_ms, completed, quality_json, logical_key)
+                 VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11)",
                 params![
                     lap.summary.id,
                     lap.summary.session_id,
@@ -68,6 +136,9 @@ impl DashboardStore {
                     lap.summary.valid,
                     lap.summary.sample_count as i64,
                     lap.summary.created_at_unix_ms as i64,
+                    lap.summary.completed,
+                    quality_json,
+                    logical_key,
                 ],
             )
             .map_err(|error| format!("failed to save lap metadata: {error}"))?;
@@ -144,17 +215,23 @@ impl DashboardStore {
                         l.sample_count, l.created_at_ms, COALESCE(v.vehicle_id, 0),
                         COALESCE(v.driver_name, ''), COALESCE(v.class_name, ''),
                         COALESCE(v.is_player, 0), COALESCE(v.overall_position, 0),
-                        COALESCE(v.class_position, 0)
-                 FROM laps l LEFT JOIN lap_vehicles v ON v.lap_id = l.id
+                        COALESCE(v.class_position, 0), COALESCE(s.session_type, ''),
+                        l.completed, l.quality_json
+                 FROM laps l
+                 LEFT JOIN lap_vehicles v ON v.lap_id = l.id
+                 LEFT JOIN sessions s ON s.id = l.session_id
                  ORDER BY l.created_at_ms DESC, l.lap_number DESC",
             )
             .map_err(|error| format!("failed to query saved laps: {error}"))?;
         let rows = statement
             .query_map([], |row| {
+                let valid = row.get(5)?;
+                let quality_json: String = row.get(16)?;
                 Ok(LapSummary {
                     id: row.get(0)?,
                     session_id: row.get(1)?,
                     track_name: row.get(2)?,
+                    session_type: row.get(14)?,
                     vehicle_id: row.get(8)?,
                     driver_name: row.get(9)?,
                     class_name: row.get(10)?,
@@ -163,10 +240,11 @@ impl DashboardStore {
                     class_position: row.get(13)?,
                     lap_number: row.get(3)?,
                     lap_time_ms: row.get::<_, i64>(4)?.max(0) as u32,
-                    valid: row.get(5)?,
+                    valid,
+                    quality: decode_quality(&quality_json, valid),
                     sample_count: row.get::<_, i64>(6)?.max(0) as usize,
                     created_at_unix_ms: row.get::<_, i64>(7)?.max(0) as u64,
-                    completed: true,
+                    completed: row.get(15)?,
                 })
             })
             .map_err(|error| format!("failed to read saved laps: {error}"))?;
@@ -182,14 +260,21 @@ impl DashboardStore {
                         l.sample_count, l.created_at_ms, COALESCE(v.vehicle_id, 0),
                         COALESCE(v.driver_name, ''), COALESCE(v.class_name, ''),
                         COALESCE(v.is_player, 0), COALESCE(v.overall_position, 0),
-                        COALESCE(v.class_position, 0)
-                 FROM laps l LEFT JOIN lap_vehicles v ON v.lap_id = l.id WHERE l.id = ?1",
+                        COALESCE(v.class_position, 0), COALESCE(s.session_type, ''),
+                        l.completed, l.quality_json
+                 FROM laps l
+                 LEFT JOIN lap_vehicles v ON v.lap_id = l.id
+                 LEFT JOIN sessions s ON s.id = l.session_id
+                 WHERE l.id = ?1",
                 params![id],
                 |row| {
+                    let valid = row.get(5)?;
+                    let quality_json: String = row.get(16)?;
                     Ok(LapSummary {
                         id: row.get(0)?,
                         session_id: row.get(1)?,
                         track_name: row.get(2)?,
+                        session_type: row.get(14)?,
                         vehicle_id: row.get(8)?,
                         driver_name: row.get(9)?,
                         class_name: row.get(10)?,
@@ -198,10 +283,11 @@ impl DashboardStore {
                         class_position: row.get(13)?,
                         lap_number: row.get(3)?,
                         lap_time_ms: row.get::<_, i64>(4)?.max(0) as u32,
-                        valid: row.get(5)?,
+                        valid,
+                        quality: decode_quality(&quality_json, valid),
                         sample_count: row.get::<_, i64>(6)?.max(0) as usize,
                         created_at_unix_ms: row.get::<_, i64>(7)?.max(0) as u64,
-                        completed: true,
+                        completed: row.get(15)?,
                     })
                 },
             )
@@ -419,7 +505,8 @@ impl DashboardStore {
     }
 
     fn initialize(&self) -> Result<(), String> {
-        self.connection()?
+        let connection = self.connection()?;
+        connection
             .execute_batch(
                 "CREATE TABLE IF NOT EXISTS sessions (
                     id TEXT PRIMARY KEY,
@@ -427,7 +514,13 @@ impl DashboardStore {
                     track_key TEXT NOT NULL,
                     track_name TEXT NOT NULL,
                     session_type TEXT NOT NULL,
-                    game_version INTEGER NOT NULL
+                    game_version INTEGER NOT NULL,
+                    signature TEXT NOT NULL DEFAULT '',
+                    last_seen_ms INTEGER NOT NULL DEFAULT 0,
+                    last_session_time_s REAL NOT NULL DEFAULT 0,
+                    source TEXT NOT NULL DEFAULT '',
+                    max_laps INTEGER NOT NULL DEFAULT 0,
+                    track_length_m REAL NOT NULL DEFAULT 0
                  );
                  CREATE TABLE IF NOT EXISTS laps (
                     id TEXT PRIMARY KEY,
@@ -437,7 +530,10 @@ impl DashboardStore {
                     lap_time_ms INTEGER NOT NULL,
                     valid INTEGER NOT NULL,
                     sample_count INTEGER NOT NULL,
-                    created_at_ms INTEGER NOT NULL
+                    created_at_ms INTEGER NOT NULL,
+                    completed INTEGER NOT NULL DEFAULT 1,
+                    quality_json TEXT NOT NULL DEFAULT '{}',
+                    logical_key TEXT
                  );
                  CREATE TABLE IF NOT EXISTS telemetry_samples (
                     lap_id TEXT NOT NULL,
@@ -503,14 +599,46 @@ impl DashboardStore {
                     samples INTEGER NOT NULL,
                     PRIMARY KEY (track_key, seq)
                  );
-                 CREATE INDEX IF NOT EXISTS telemetry_lap_idx
-                    ON telemetry_samples (lap_id, seq);
                  CREATE INDEX IF NOT EXISTS lap_vehicles_class_idx
                     ON lap_vehicles (class_name, vehicle_id);
                  CREATE INDEX IF NOT EXISTS contacts_created_idx
                     ON contacts (created_at_ms DESC);",
             )
             .map_err(|error| format!("failed to initialize dashboard database: {error}"))?;
+
+        for (table, column, definition) in [
+            ("sessions", "signature", "TEXT NOT NULL DEFAULT ''"),
+            ("sessions", "last_seen_ms", "INTEGER NOT NULL DEFAULT 0"),
+            (
+                "sessions",
+                "last_session_time_s",
+                "REAL NOT NULL DEFAULT 0",
+            ),
+            ("sessions", "source", "TEXT NOT NULL DEFAULT ''"),
+            ("sessions", "max_laps", "INTEGER NOT NULL DEFAULT 0"),
+            (
+                "sessions",
+                "track_length_m",
+                "REAL NOT NULL DEFAULT 0",
+            ),
+            ("laps", "completed", "INTEGER NOT NULL DEFAULT 1"),
+            ("laps", "quality_json", "TEXT NOT NULL DEFAULT '{}'"),
+            ("laps", "logical_key", "TEXT"),
+        ] {
+            ensure_column(&connection, table, column, definition)?;
+        }
+        connection
+            .execute_batch(
+                "DROP INDEX IF EXISTS telemetry_lap_idx;
+                 CREATE INDEX IF NOT EXISTS sessions_resume_idx
+                    ON sessions (signature, last_seen_ms DESC);
+                 CREATE INDEX IF NOT EXISTS laps_session_idx
+                    ON laps (session_id, lap_number, created_at_ms DESC);
+                 CREATE UNIQUE INDEX IF NOT EXISTS laps_logical_key_idx
+                    ON laps (logical_key) WHERE logical_key IS NOT NULL;
+                 PRAGMA user_version = 2;",
+            )
+            .map_err(|error| format!("failed to finalize dashboard database migration: {error}"))?;
         Ok(())
     }
 
@@ -527,14 +655,61 @@ impl DashboardStore {
         connection
             .pragma_update(None, "synchronous", "NORMAL")
             .map_err(|error| format!("failed to set SQLite synchronous mode: {error}"))?;
+        connection
+            .pragma_update(None, "foreign_keys", true)
+            .map_err(|error| format!("failed to enable SQLite foreign keys: {error}"))?;
         Ok(connection)
     }
+}
+
+fn ensure_column(
+    connection: &Connection,
+    table: &str,
+    column: &str,
+    definition: &str,
+) -> Result<(), String> {
+    let mut statement = connection
+        .prepare(&format!("PRAGMA table_info({table})"))
+        .map_err(|error| format!("failed to inspect {table}: {error}"))?;
+    let columns = statement
+        .query_map([], |row| row.get::<_, String>(1))
+        .map_err(|error| format!("failed to read {table} columns: {error}"))?
+        .collect::<Result<Vec<_>, _>>()
+        .map_err(|error| format!("failed to decode {table} columns: {error}"))?;
+    if !columns.iter().any(|value| value == column) {
+        connection
+            .execute_batch(&format!("ALTER TABLE {table} ADD COLUMN {column} {definition};"))
+            .map_err(|error| format!("failed to add {table}.{column}: {error}"))?;
+    }
+    Ok(())
+}
+
+fn decode_quality(json: &str, legacy_valid: bool) -> TraceQuality {
+    serde_json::from_str(json).unwrap_or_else(|_| TraceQuality {
+        status: if legacy_valid {
+            TraceQualityStatus::Unknown
+        } else {
+            TraceQualityStatus::Rejected
+        },
+        score: if legacy_valid { 50 } else { 0 },
+        ..TraceQuality::default()
+    })
 }
 
 pub fn unix_ms() -> u64 {
     SystemTime::now()
         .duration_since(UNIX_EPOCH)
         .map_or(0, |duration| duration.as_millis() as u64)
+}
+
+pub fn session_signature(session: &SessionState) -> String {
+    format!(
+        "{}:{}:{}:{}",
+        track_key(&session.track_name, session.track_length_m),
+        session.session_type.trim().to_ascii_lowercase(),
+        session.game_version,
+        session.max_laps
+    )
 }
 
 pub fn track_key(track_name: &str, track_length_m: f64) -> String {
@@ -605,6 +780,7 @@ mod tests {
                 id: "session-1-lap-3".to_owned(),
                 session_id: session.id.clone(),
                 track_name: session.track_name.clone(),
+                session_type: session.session_type.clone(),
                 vehicle_id: 7,
                 driver_name: "Driver A".to_owned(),
                 class_name: "Hypercar".to_owned(),
@@ -632,9 +808,11 @@ mod tests {
         assert_eq!(listed_laps[0].lap_time_ms, 218_432);
         assert_eq!(listed_laps[0].driver_name, "Driver A");
         assert_eq!(listed_laps[0].class_position, 2);
+        assert_eq!(listed_laps[0].session_type, "Race");
         let loaded_lap = store.load_lap(&lap.summary.id).unwrap().unwrap();
         assert_eq!(loaded_lap.summary.id, lap.summary.id);
         assert_eq!(loaded_lap.summary.vehicle_id, 7);
+        assert_eq!(loaded_lap.summary.session_type, "Race");
         assert_eq!(loaded_lap.samples.len(), 1);
         assert_eq!(loaded_lap.samples[0].speed_kmh, 287.5);
 

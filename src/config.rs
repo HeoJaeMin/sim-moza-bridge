@@ -37,6 +37,7 @@ pub struct BridgeConfig {
     pub input_log: Option<String>,
     pub corner_log: Option<String>,
     pub analysis_report: Option<String>,
+    pub headless: bool,
     pub dry_run: bool,
     pub debug: bool,
 }
@@ -49,6 +50,7 @@ struct RawArgs {
     input_log: Option<String>,
     corner_log: Option<String>,
     analysis_report: Option<String>,
+    headless: bool,
     debug: bool,
 }
 
@@ -86,6 +88,7 @@ where
         input_log: raw.input_log,
         corner_log: raw.corner_log,
         analysis_report: raw.analysis_report,
+        headless: raw.headless,
         dry_run: false,
         debug: raw.debug,
     })
@@ -108,6 +111,7 @@ where
             "--analysis-report" => {
                 raw.analysis_report = Some(next_value(&mut iter, "--analysis-report")?)
             }
+            "--headless" => raw.headless = true,
             "--debug" => raw.debug = true,
             "--help" | "-h" => return Err(ConfigError::Help(help_text())),
             unknown => {
@@ -159,6 +163,7 @@ fn help_text() -> String {
         "  --input-log <path>",
         "  --corner-log <path>",
         "  --analysis-report <path>",
+        "  --headless",
         "  --debug",
     ]
     .join("\n")
@@ -183,16 +188,26 @@ mod tests {
         assert_eq!(config.mode, BridgeMode::Remap);
         assert!(!config.fix_tyre_wear_order);
         assert!(config.f1_24_car_damage_compat);
+        assert!(!config.headless);
         assert!(!config.dry_run);
         assert!(!config.debug);
     }
 
     #[test]
     fn parses_ports_and_debug() {
-        let config = parse(&["--listen", "21000", "--moza-port", "22025", "--debug"]).unwrap();
+        let config = parse(&[
+            "--listen",
+            "21000",
+            "--moza-port",
+            "22025",
+            "--headless",
+            "--debug",
+        ])
+        .unwrap();
 
         assert_eq!(config.listen_port, 21000);
         assert_eq!(config.moza_port, 22025);
+        assert!(config.headless);
         assert!(config.debug);
     }
 
@@ -233,6 +248,9 @@ mod tests {
         assert_eq!(ace.game.id, "ace");
         assert_eq!(ace.listen_port, 20777);
         assert_eq!(ace.moza_port, 22025);
+
+        let acr = parse(&["--game", "acr"]).unwrap();
+        assert_eq!(acr.game.id, "acr");
     }
 
     #[test]

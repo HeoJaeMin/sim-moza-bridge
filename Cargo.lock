@@ -2990,6 +2990,7 @@ dependencies = [
  "eframe",
  "rusqlite",
  "serde",
+ "serde_json",
  "tokio",
 ]
 

@@ -1,4 +1,5 @@
 pub mod ace;
+pub mod acr;
 pub mod lmu;
 
 #[cfg(windows)]
@@ -22,6 +23,15 @@ use crate::telemetry::TelemetryUpdate;
 const POLL_INTERVAL: Duration = Duration::from_millis(50);
 #[cfg(windows)]
 const WARNING_INTERVAL: Duration = Duration::from_secs(2);
+#[cfg(windows)]
+const LMU_STABILITY_MARKERS: [shared_memory::StabilityMarker; 3] = [
+    shared_memory::StabilityMarker::new(1_700, 8),
+    shared_memory::StabilityMarker::new(1_736, 4),
+    shared_memory::StabilityMarker::new(128_464, 3),
+];
+#[cfg(windows)]
+const PACKET_ID_MARKER: [shared_memory::StabilityMarker; 1] =
+    [shared_memory::StabilityMarker::new(0, 4)];
 
 #[cfg(windows)]
 #[cfg_attr(windows, allow(dead_code))]
@@ -30,6 +40,7 @@ fn run_shared_memory_adapter<F>(
     adapter_name: &str,
     mapping_name: &str,
     snapshot_size: usize,
+    markers: &'static [shared_memory::StabilityMarker],
     parse_update: F,
 ) -> Result<(), String>
 where
@@ -40,6 +51,7 @@ where
         adapter_name,
         mapping_name,
         snapshot_size,
+        markers,
         parse_update,
         None,
     )
@@ -51,6 +63,7 @@ fn run_shared_memory_adapter_with_hud<F>(
     adapter_name: &str,
     mapping_name: &str,
     snapshot_size: usize,
+    markers: &'static [shared_memory::StabilityMarker],
     parse_update: F,
     hud: Option<HudHandle>,
 ) -> Result<(), String>
@@ -62,6 +75,7 @@ where
         adapter_name,
         mapping_name,
         snapshot_size,
+        markers,
         parse_update,
         hud,
     )
@@ -73,6 +87,7 @@ fn run_shared_memory_adapter_loop<F>(
     adapter_name: &str,
     mapping_name: &str,
     snapshot_size: usize,
+    markers: &'static [shared_memory::StabilityMarker],
     mut parse_update: F,
     hud: Option<HudHandle>,
 ) -> Result<(), String>
@@ -83,6 +98,7 @@ where
     let mut frame_identifier = 0_u32;
     let mut warned = false;
     let mut last_warning = Instant::now();
+    let mut reader = None;
 
     println!("{adapter_name} adapter reading {mapping_name}");
     println!("game={} ({})", config.game.id, config.game.name);
@@ -91,7 +107,19 @@ where
     print_optional_hud(hud.is_some());
 
     loop {
-        match shared_memory::read_mapping(mapping_name, snapshot_size) {
+        let snapshot = (|| {
+            if reader.is_none() {
+                reader = Some(shared_memory::SharedMemoryReader::open(
+                    mapping_name,
+                    snapshot_size,
+                )?);
+            }
+            reader
+                .as_ref()
+                .expect("shared-memory reader was initialized")
+                .read_consistent(markers)
+        })();
+        match snapshot {
             Ok(snapshot) => {
                 warned = false;
                 frame_identifier = frame_identifier.wrapping_add(1);
@@ -103,6 +131,7 @@ where
                 }
             }
             Err(error) => {
+                reader = None;
                 if !warned || last_warning.elapsed() >= WARNING_INTERVAL {
                     eprintln!("[adapter-warning] {error}; waiting for {mapping_name}");
                     warned = true;
@@ -117,13 +146,21 @@ where
 
 #[cfg(windows)]
 pub fn read_lmu_update(frame_identifier: u32) -> Result<Option<TelemetryUpdate>, String> {
-    let snapshot = shared_memory::read_mapping(lmu::LMU_MAPPING_NAME, lmu::LMU_VIEW_SIZE)?;
+    let snapshot = shared_memory::SharedMemoryReader::open(
+        lmu::LMU_MAPPING_NAME,
+        lmu::LMU_VIEW_SIZE,
+    )?
+    .read_consistent(&LMU_STABILITY_MARKERS)?;
     lmu::parse_lmu_update(&snapshot, frame_identifier)
 }
 
 #[cfg(windows)]
 pub fn read_ace_update(frame_identifier: u32) -> Result<Option<TelemetryUpdate>, String> {
-    let snapshot = shared_memory::read_mapping(ace::ACE_MAPPING_NAME, ace::ACE_PHYSICS_MIN_SIZE)?;
+    let snapshot = shared_memory::SharedMemoryReader::open(
+        ace::ACE_MAPPING_NAME,
+        ace::ACE_PHYSICS_MIN_SIZE,
+    )?
+    .read_consistent(&PACKET_ID_MARKER)?;
     ace::parse_ace_update(&snapshot, frame_identifier)
 }
 

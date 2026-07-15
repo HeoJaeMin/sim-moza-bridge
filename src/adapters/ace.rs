@@ -34,6 +34,7 @@ pub fn start_ace_adapter(config: BridgeConfig) -> Result<(), String> {
             "Assetto Corsa EVO",
             ACE_MAPPING_NAME,
             ACE_PHYSICS_MIN_SIZE,
+            &super::PACKET_ID_MARKER,
             parse_ace_update,
         )
     }
@@ -59,6 +60,7 @@ pub fn start_ace_adapter_with_hud(
             "Assetto Corsa EVO",
             ACE_MAPPING_NAME,
             ACE_PHYSICS_MIN_SIZE,
+            &super::PACKET_ID_MARKER,
             parse_ace_update,
             hud,
         )

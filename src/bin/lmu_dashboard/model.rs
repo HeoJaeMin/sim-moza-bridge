@@ -1,5 +1,7 @@
 use serde::{Deserialize, Serialize};
 
+use crate::telemetry_quality::TraceQuality;
+
 #[derive(Clone, Copy, Debug, Default, Deserialize, PartialEq, Serialize)]
 pub struct Point2 {
     pub x: f64,
@@ -158,6 +160,8 @@ pub struct LapSummary {
     pub session_id: String,
     pub track_name: String,
     #[serde(default)]
+    pub session_type: String,
+    #[serde(default)]
     pub vehicle_id: i32,
     #[serde(default)]
     pub driver_name: String,
@@ -172,6 +176,8 @@ pub struct LapSummary {
     pub lap_number: i32,
     pub lap_time_ms: u32,
     pub valid: bool,
+    #[serde(default)]
+    pub quality: TraceQuality,
     pub sample_count: usize,
     pub created_at_unix_ms: u64,
     pub completed: bool,
@@ -189,6 +195,20 @@ pub struct CurrentLapInfo {
     pub lap_elapsed_s: f64,
     pub sample_count: usize,
     pub invalid: bool,
+    pub quality: TraceQuality,
+}
+
+#[derive(Clone, Debug, Default, Serialize)]
+pub struct CaptureHealth {
+    pub state: String,
+    pub sample_rate_hz: f64,
+    pub accepted_frames: u64,
+    pub rejected_frames: u64,
+    pub duplicate_frames: u64,
+    pub invalid_session_frames: u64,
+    pub last_frame_age_ms: u64,
+    pub session_resumed: bool,
+    pub current_quality: TraceQuality,
 }
 
 #[derive(Clone, Debug, Default, Deserialize, Serialize)]
@@ -235,6 +255,7 @@ pub struct LiveSnapshot {
     pub track_points: Vec<TrackPoint>,
     pub recent_contacts: Vec<ContactEvent>,
     pub current_lap: Option<CurrentLapInfo>,
+    pub capture: CaptureHealth,
 }
 
 #[derive(Clone, Debug, Default, Serialize)]
