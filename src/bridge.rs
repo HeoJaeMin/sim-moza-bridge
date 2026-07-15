@@ -111,16 +111,16 @@ impl TelemetryBridge {
         {
             let mut patched_packet = packet.to_vec();
 
-            if self.fix_tyre_wear_order {
-                if !rewrite_all_tyre_wear_to_moza_named_order(&mut patched_packet) {
-                    self.stats.malformed += 1;
-                    return Some(ProcessedPacket {
-                        packet: packet.to_vec(),
-                        patched: false,
-                        detected_game,
-                        telemetry_update,
-                    });
-                }
+            if self.fix_tyre_wear_order
+                && !rewrite_all_tyre_wear_to_moza_named_order(&mut patched_packet)
+            {
+                self.stats.malformed += 1;
+                return Some(ProcessedPacket {
+                    packet: packet.to_vec(),
+                    patched: false,
+                    detected_game,
+                    telemetry_update,
+                });
             }
 
             if self.f1_24_car_damage_compat {

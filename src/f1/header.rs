@@ -79,6 +79,6 @@ mod tests {
 
     #[test]
     fn rejects_short_packets() {
-        assert!(parse_packet_header(&vec![0_u8; PACKET_HEADER_SIZE - 1]).is_none());
+        assert!(parse_packet_header(&[0_u8; PACKET_HEADER_SIZE - 1]).is_none());
     }
 }

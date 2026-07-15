@@ -13,6 +13,7 @@ pub fn start_udp_bridge(config: BridgeConfig) -> Result<(), String> {
     run_udp_bridge(config, None)
 }
 
+#[cfg_attr(not(any(target_os = "macos", target_os = "windows")), allow(dead_code))]
 pub fn start_udp_bridge_with_hud(
     config: BridgeConfig,
     hud: Option<HudHandle>,

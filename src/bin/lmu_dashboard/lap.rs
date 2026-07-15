@@ -162,7 +162,10 @@ impl LapTracker {
             .filter(|value| *value > 0);
         let quality = self.assess(official_lap_ms, completed);
         let summary = LapSummary {
-            id: format!("{}-car-{}-lap-{lap_number}", self.session_id, self.vehicle_id),
+            id: format!(
+                "{}-car-{}-lap-{lap_number}",
+                self.session_id, self.vehicle_id
+            ),
             session_id: self.session_id.clone(),
             track_name: self.track_name.clone(),
             session_type: self.session_type.clone(),
@@ -186,7 +189,11 @@ impl LapTracker {
         })
     }
 
-    fn assess(&self, official_lap_ms: Option<u32>, completed: bool) -> crate::telemetry_quality::TraceQuality {
+    fn assess(
+        &self,
+        official_lap_ms: Option<u32>,
+        completed: bool,
+    ) -> crate::telemetry_quality::TraceQuality {
         let samples = self
             .current_samples
             .iter()
@@ -315,7 +322,10 @@ mod tests {
             .unwrap();
 
         assert!(!completed.summary.valid);
-        assert_eq!(completed.summary.quality.status, TraceQualityStatus::Partial);
+        assert_eq!(
+            completed.summary.quality.status,
+            TraceQualityStatus::Partial
+        );
     }
 
     fn player(lap_number: i32, session_time_s: f64) -> VehicleTelemetry {

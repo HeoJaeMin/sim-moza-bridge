@@ -15,6 +15,7 @@ mod telemetry_quality;
 mod udp;
 
 use games::ProtocolKind;
+#[cfg(any(target_os = "macos", target_os = "windows"))]
 use hud::HudHandle;
 
 fn main() {

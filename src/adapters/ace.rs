@@ -22,9 +22,9 @@ pub fn start_ace_adapter(config: BridgeConfig) -> Result<(), String> {
     #[cfg(not(windows))]
     {
         let _ = config;
-        return Err(format!(
+        Err(format!(
             "Assetto Corsa EVO adapter requires Windows shared memory ({ACE_MAPPING_NAME}); run this on the game PC"
-        ));
+        ))
     }
 
     #[cfg(windows)]
@@ -48,9 +48,9 @@ pub fn start_ace_adapter_with_hud(
     {
         let _ = config;
         let _ = hud;
-        return Err(format!(
+        Err(format!(
             "Assetto Corsa EVO adapter requires Windows shared memory ({ACE_MAPPING_NAME}); run this on the game PC"
-        ));
+        ))
     }
 
     #[cfg(windows)]

@@ -243,10 +243,7 @@ mod tests {
         assert!(rewrite_all_tyre_wear_to_moza_named_order(&mut packet));
         assert_eq!(read_raw_wear(&packet, 0), [30.0, 40.0, 10.0, 20.0]);
         assert_eq!(read_raw_wear(&packet, 21), [3.0, 4.0, 1.0, 2.0]);
-        assert!(!rewrite_all_tyre_wear_to_moza_named_order(&mut vec![
-            0_u8;
-            29
-        ]));
+        assert!(!rewrite_all_tyre_wear_to_moza_named_order(&mut [0_u8; 29]));
     }
 
     #[test]
@@ -285,6 +282,6 @@ mod tests {
         );
         assert_eq!(compat[PACKET_HEADER_SIZE + 24], 9);
         assert_eq!(compat[PACKET_HEADER_SIZE + 25], 10);
-        assert!(to_f1_24_car_damage_compat_packet(&vec![0_u8; 29]).is_none());
+        assert!(to_f1_24_car_damage_compat_packet(&[0_u8; 29]).is_none());
     }
 }

@@ -1,3 +1,5 @@
+#![allow(dead_code)]
+
 use serde::{Deserialize, Serialize};
 
 const MIN_SAMPLE_RATE_HZ: f64 = 5.0;
@@ -150,16 +152,11 @@ pub fn assess_trace(
         let median_interval = positive_intervals[positive_intervals.len() / 2];
         if median_interval > 0.0 {
             quality.sample_rate_hz = round(1.0 / median_interval, 2);
-            let max_gap = positive_intervals
-                .iter()
-                .copied()
-                .fold(0.0_f64, f64::max);
+            let max_gap = positive_intervals.iter().copied().fold(0.0_f64, f64::max);
             quality.max_gap_ms = seconds_to_ms(max_gap);
             quality.dropped_samples = positive_intervals
                 .iter()
-                .map(|interval| {
-                    ((*interval / median_interval).round() as i64 - 1).max(0) as u32
-                })
+                .map(|interval| ((*interval / median_interval).round() as i64 - 1).max(0) as u32)
                 .sum();
             if quality.sample_rate_hz < MIN_SAMPLE_RATE_HZ {
                 push_reason(&mut quality, QualityReason::SparseSamples, 25);
@@ -187,7 +184,10 @@ pub fn assess_trace(
             .min(track_length_m);
         quality.start_progress = round(start / track_length_m, 4);
         quality.end_progress = round(end / track_length_m, 4);
-        quality.coverage_ratio = round(((max_distance - min_distance) / track_length_m).clamp(0.0, 1.0), 4);
+        quality.coverage_ratio = round(
+            ((max_distance - min_distance) / track_length_m).clamp(0.0, 1.0),
+            4,
+        );
 
         let start_window_m = (track_length_m * 0.03).clamp(100.0, 300.0);
         let finish_window_m = (track_length_m * 0.05).clamp(150.0, 500.0);
@@ -206,13 +206,17 @@ pub fn assess_trace(
 
     if let Some(official_time_ms) = official_time_ms.filter(|time| *time > 0) {
         let observed_span_ms = seconds_to_ms(
-            (last.elapsed_s - first.elapsed_s)
-                .max(last.session_time_s - first.session_time_s),
+            (last.elapsed_s - first.elapsed_s).max(last.session_time_s - first.session_time_s),
         );
         let final_elapsed_ms = seconds_to_ms(last.elapsed_s);
         let span_matches = times_consistent(observed_span_ms, official_time_ms);
         let final_matches = times_consistent(final_elapsed_ms, official_time_ms);
-        if completed && (!span_matches || !final_matches) {
+        let full_lap_capture = !quality.reasons.contains(&QualityReason::StartsMidTrace)
+            && !quality.reasons.contains(&QualityReason::EndsBeforeFinish)
+            && !quality
+                .reasons
+                .contains(&QualityReason::InsufficientCoverage);
+        if completed && full_lap_capture && (!span_matches || !final_matches) {
             push_reason(&mut quality, QualityReason::TimingMismatch, 50);
         }
     }
@@ -326,7 +330,11 @@ mod tests {
 
         assert_ne!(quality.status, TraceQualityStatus::Valid);
         assert!(quality.reasons.contains(&QualityReason::StartsMidTrace));
-        assert!(quality.reasons.contains(&QualityReason::InsufficientCoverage));
+        assert!(
+            quality
+                .reasons
+                .contains(&QualityReason::InsufficientCoverage)
+        );
     }
 
     #[test]

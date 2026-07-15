@@ -151,11 +151,7 @@ fn validate_markers(size: usize, markers: &[StabilityMarker]) -> Result<(), Stri
 }
 
 #[cfg(windows)]
-fn snapshot_markers_match(
-    snapshot: &[u8],
-    markers: &[StabilityMarker],
-    expected: &[u8],
-) -> bool {
+fn snapshot_markers_match(snapshot: &[u8], markers: &[StabilityMarker], expected: &[u8]) -> bool {
     let mut cursor = 0;
     for marker in markers {
         let Some(bytes) = snapshot.get(marker.offset..marker.offset + marker.length) else {
@@ -192,16 +188,8 @@ mod tests {
     fn compares_multiple_stability_markers() {
         let snapshot = [1, 2, 3, 4, 5, 6, 7, 8];
         let markers = [StabilityMarker::new(1, 2), StabilityMarker::new(6, 2)];
-        assert!(snapshot_markers_match(
-            &snapshot,
-            &markers,
-            &[2, 3, 7, 8]
-        ));
-        assert!(!snapshot_markers_match(
-            &snapshot,
-            &markers,
-            &[2, 4, 7, 8]
-        ));
+        assert!(snapshot_markers_match(&snapshot, &markers, &[2, 3, 7, 8]));
+        assert!(!snapshot_markers_match(&snapshot, &markers, &[2, 4, 7, 8]));
     }
 
     #[test]

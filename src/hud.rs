@@ -1,3 +1,5 @@
+#![cfg_attr(not(any(target_os = "macos", target_os = "windows")), allow(dead_code))]
+
 use std::sync::{Arc, Mutex};
 
 use crate::telemetry::{

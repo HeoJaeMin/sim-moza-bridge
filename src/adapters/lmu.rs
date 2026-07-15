@@ -51,9 +51,9 @@ pub fn start_lmu_adapter(config: BridgeConfig) -> Result<(), String> {
     #[cfg(not(windows))]
     {
         let _ = config;
-        return Err(format!(
+        Err(format!(
             "Le Mans Ultimate adapter requires Windows shared memory ({LMU_MAPPING_NAME}); run this on the game PC with LMU shared memory enabled"
-        ));
+        ))
     }
 
     #[cfg(windows)]
@@ -77,9 +77,9 @@ pub fn start_lmu_adapter_with_hud(
     {
         let _ = config;
         let _ = hud;
-        return Err(format!(
+        Err(format!(
             "Le Mans Ultimate adapter requires Windows shared memory ({LMU_MAPPING_NAME}); run this on the game PC with LMU shared memory enabled"
-        ));
+        ))
     }
 
     #[cfg(windows)]
@@ -128,10 +128,7 @@ pub(crate) fn parse_lmu_update(
     let fuel = finite_f64(read_f64_le(snapshot, base + FUEL_OFFSET)?);
     let fuel_capacity = finite_f64(read_f64_le(snapshot, base + FUEL_CAPACITY_OFFSET)?);
     let rear_brake_bias = finite_f64(read_f64_le(snapshot, base + REAR_BRAKE_BIAS_OFFSET)?);
-    let current_lap_time_ms = match seconds_to_ms(session_time as f64 - lap_start) {
-        Some(value) => value,
-        None => 0,
-    };
+    let current_lap_time_ms = seconds_to_ms(session_time as f64 - lap_start).unwrap_or_default();
 
     Ok(Some(TelemetryUpdate {
         input: Some(InputSample {

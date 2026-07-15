@@ -146,21 +146,17 @@ where
 
 #[cfg(windows)]
 pub fn read_lmu_update(frame_identifier: u32) -> Result<Option<TelemetryUpdate>, String> {
-    let snapshot = shared_memory::SharedMemoryReader::open(
-        lmu::LMU_MAPPING_NAME,
-        lmu::LMU_VIEW_SIZE,
-    )?
-    .read_consistent(&LMU_STABILITY_MARKERS)?;
+    let snapshot =
+        shared_memory::SharedMemoryReader::open(lmu::LMU_MAPPING_NAME, lmu::LMU_VIEW_SIZE)?
+            .read_consistent(&LMU_STABILITY_MARKERS)?;
     lmu::parse_lmu_update(&snapshot, frame_identifier)
 }
 
 #[cfg(windows)]
 pub fn read_ace_update(frame_identifier: u32) -> Result<Option<TelemetryUpdate>, String> {
-    let snapshot = shared_memory::SharedMemoryReader::open(
-        ace::ACE_MAPPING_NAME,
-        ace::ACE_PHYSICS_MIN_SIZE,
-    )?
-    .read_consistent(&PACKET_ID_MARKER)?;
+    let snapshot =
+        shared_memory::SharedMemoryReader::open(ace::ACE_MAPPING_NAME, ace::ACE_PHYSICS_MIN_SIZE)?
+            .read_consistent(&PACKET_ID_MARKER)?;
     ace::parse_ace_update(&snapshot, frame_identifier)
 }
 
