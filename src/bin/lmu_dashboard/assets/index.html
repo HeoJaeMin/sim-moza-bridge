@@ -1,0 +1,207 @@
+<!doctype html>
+<html lang="ko">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="color-scheme" content="dark" />
+    <meta name="theme-color" content="#080b0e" />
+    <title>LMU Race Control</title>
+    <link rel="stylesheet" href="./styles.css" />
+  </head>
+  <body>
+    <div class="app-shell">
+      <header class="app-header">
+        <div class="brand-lockup">
+          <span class="brand-mark" aria-hidden="true">LMU</span>
+          <div>
+            <p class="eyebrow">LOCAL TELEMETRY</p>
+            <h1>Race Control</h1>
+          </div>
+        </div>
+        <div class="connection-cluster" aria-live="polite">
+          <div class="source-copy">
+            <span>DATA SOURCE</span>
+            <strong id="source-label">연결 대기</strong>
+          </div>
+          <span id="connection-badge" class="status-badge is-offline">
+            <span class="status-dot" aria-hidden="true"></span>
+            <span id="connection-label">OFFLINE</span>
+          </span>
+        </div>
+      </header>
+
+      <div id="warning-banner" class="warning-banner" role="alert" hidden>
+        <span class="warning-code">WARN</span>
+        <span id="warning-text"></span>
+      </div>
+
+      <section class="panel session-panel" aria-labelledby="session-heading">
+        <div class="panel-heading session-heading-row">
+          <div>
+            <p class="eyebrow">SESSION</p>
+            <h2 id="session-heading">세션 정보</h2>
+          </div>
+          <strong id="session-phase" class="session-phase">대기 중</strong>
+        </div>
+        <dl class="session-grid">
+          <div class="session-stat session-stat-wide">
+            <dt>트랙</dt>
+            <dd id="session-track">—</dd>
+          </div>
+          <div class="session-stat">
+            <dt>세션</dt>
+            <dd id="session-type">—</dd>
+          </div>
+          <div class="session-stat">
+            <dt>남은 시간</dt>
+            <dd id="session-remaining">—</dd>
+          </div>
+          <div class="session-stat">
+            <dt>랩</dt>
+            <dd id="session-lap">—</dd>
+          </div>
+          <div class="session-stat">
+            <dt>트랙 / 공기</dt>
+            <dd id="session-temperature">—</dd>
+          </div>
+          <div class="session-stat">
+            <dt>차량</dt>
+            <dd id="session-cars">0</dd>
+          </div>
+        </dl>
+      </section>
+
+      <main class="dashboard-grid">
+        <section class="panel track-panel" aria-labelledby="track-heading">
+          <div class="panel-heading panel-heading-inline">
+            <div>
+              <p class="eyebrow">LIVE POSITION</p>
+              <h2 id="track-heading">트랙 맵</h2>
+            </div>
+            <div class="map-meta">
+              <span><strong id="map-point-count">0</strong> POINTS</span>
+              <span><strong id="map-car-count">0</strong> CARS</span>
+            </div>
+          </div>
+          <div class="track-stage">
+            <svg
+              id="track-map"
+              class="track-map"
+              viewBox="0 0 1000 640"
+              role="img"
+              aria-labelledby="track-map-title track-map-description"
+              preserveAspectRatio="xMidYMid meet"
+            >
+              <title id="track-map-title">실시간 트랙 차량 위치</title>
+              <desc id="track-map-description">LMU에서 수집한 트랙 중심선과 전체 차량 위치입니다.</desc>
+              <g id="track-layer"></g>
+              <g id="vehicle-layer"></g>
+            </svg>
+            <div id="track-empty" class="empty-state track-empty">
+              <span class="empty-kicker">NO TRACK DATA</span>
+              <strong>트랙 좌표를 기다리는 중입니다</strong>
+              <small>첫 유효 랩이 기록되면 중심선이 표시됩니다.</small>
+            </div>
+          </div>
+          <div class="track-legend" aria-label="트랙 맵 범례">
+            <span><i class="legend-dot is-player"></i>내 차량</span>
+            <span><i class="legend-dot is-leader"></i>선두</span>
+            <span><i class="legend-dot"></i>다른 차량</span>
+            <span><i class="legend-dot is-pit"></i>피트</span>
+          </div>
+        </section>
+
+        <section class="panel leaderboard-panel" aria-labelledby="leaderboard-heading">
+          <div class="panel-heading panel-heading-inline">
+            <div>
+              <p class="eyebrow">FULL FIELD</p>
+              <h2 id="leaderboard-heading">전체 리더보드</h2>
+            </div>
+            <span id="leaderboard-count" class="count-badge">0</span>
+          </div>
+          <div class="table-scroll">
+            <table class="leaderboard-table">
+              <thead>
+                <tr>
+                  <th scope="col" class="col-position">P</th>
+                  <th scope="col">드라이버</th>
+                  <th scope="col">클래스</th>
+                  <th scope="col" class="numeric">INTERVAL</th>
+                  <th scope="col" class="numeric">GAP</th>
+                  <th scope="col" class="col-pit">PIT</th>
+                </tr>
+              </thead>
+              <tbody id="leaderboard-body"></tbody>
+            </table>
+            <div id="leaderboard-empty" class="empty-state table-empty">
+              <span class="empty-kicker">NO VEHICLES</span>
+              <strong>차량 데이터를 기다리는 중입니다</strong>
+            </div>
+          </div>
+        </section>
+
+        <section class="panel telemetry-panel" aria-labelledby="telemetry-heading">
+          <div class="panel-heading telemetry-heading-row">
+            <div>
+              <p class="eyebrow">LAP TRACE</p>
+              <h2 id="telemetry-heading">랩 텔레메트리</h2>
+            </div>
+            <div class="lap-controls">
+              <label for="lap-select">저장 랩</label>
+              <select id="lap-select">
+                <option value="live">현재 랩 · LIVE</option>
+              </select>
+            </div>
+          </div>
+          <div class="trace-summary">
+            <span id="trace-lap" class="trace-lap">현재 랩</span>
+            <strong id="trace-time">—:—.—</strong>
+            <span id="trace-detail">샘플 대기 중</span>
+          </div>
+          <div class="chart-wrap">
+            <canvas
+              id="telemetry-chart"
+              role="img"
+              aria-label="속도, 스로틀, 브레이크, 조향, RPM 랩 텔레메트리 그래프"
+            >
+              브라우저가 canvas 그래프를 지원하지 않습니다.
+            </canvas>
+            <div id="chart-empty" class="empty-state chart-empty">
+              <span class="empty-kicker">NO LAP TRACE</span>
+              <strong>랩 샘플을 기다리는 중입니다</strong>
+            </div>
+          </div>
+          <div class="chart-legend" aria-label="텔레메트리 그래프 범례">
+            <span style="--series-color: #39c8ff">속도</span>
+            <span style="--series-color: #80e35a">스로틀</span>
+            <span style="--series-color: #ff4c55">브레이크</span>
+            <span style="--series-color: #f4c94a">조향</span>
+            <span style="--series-color: #b88cff">RPM</span>
+          </div>
+        </section>
+
+        <section class="panel contacts-panel" aria-labelledby="contacts-heading">
+          <div class="panel-heading panel-heading-inline">
+            <div>
+              <p class="eyebrow">INCIDENT LOG</p>
+              <h2 id="contacts-heading">접촉 기록</h2>
+            </div>
+            <span id="contacts-count" class="count-badge">0</span>
+          </div>
+          <div id="contacts-list" class="contacts-list"></div>
+          <div id="contacts-empty" class="empty-state contacts-empty">
+            <span class="empty-kicker">CLEAR</span>
+            <strong>최근 접촉 기록이 없습니다</strong>
+          </div>
+        </section>
+      </main>
+
+      <footer class="app-footer">
+        <span>LMU LOCAL DASHBOARD</span>
+        <span id="last-update">업데이트 대기 중</span>
+      </footer>
+    </div>
+
+    <script src="./app.js" defer></script>
+  </body>
+</html>

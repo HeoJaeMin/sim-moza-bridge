@@ -106,6 +106,11 @@ cargo run -- --game ace</code></pre>
     <p>브리지가 시작되면 로컬 HUD가 Rust native 창으로 열립니다. macOS에서는 macOS 창, Windows에서는 Windows 창으로 실행됩니다.</p>
     <p>HUD에는 속도, 기어, RPM, REV LED, 입력 추적, 타이어/브레이크 상태, 앞차/뒤차/선두 gap, 연료, ERS, 손상 패널이 기본으로 표시됩니다.</p>
 
+    <h2>LMU 레이싱 대시보드</h2>
+    <p>LMU용 트랙 맵, 전체 리더보드, 랩별 텔레메트리 저장, 접촉 기록을 한 화면에서 보는 별도 웹 대시보드를 실행할 수 있습니다.</p>
+    <pre><code>cargo run --bin lmu-dashboard -- --live</code></pre>
+    <p>게임 없이 새 UI를 확인하려면 <code>--demo</code>를 사용합니다. 실행 방법, 태블릿 연결, 저장 위치와 접촉 판정의 한계는 <a href="docs/lmu-dashboard.md">LMU 레이싱 대시보드 문서</a>에 정리되어 있습니다.</p>
+
     <h2>동작 방식</h2>
     <ul>
       <li><code>127.0.0.1:20777</code>에서 UDP 텔레메트리를 받습니다.</li>
@@ -136,6 +141,7 @@ cargo run -- --game ace</code></pre>
       <li><a href="docs/f1-25-moza-telemetry-matrix.md">F1 25 / MOZA 텔레메트리 매트릭스</a></li>
       <li><a href="docs/dashboard-binding.md">MOZA 대시보드 바인딩 메모</a></li>
       <li><a href="docs/game-adapter-research.md">게임 어댑터 조사</a></li>
+      <li><a href="docs/lmu-dashboard.md">LMU 레이싱 대시보드</a></li>
     </ul>
   </main>
 </body>

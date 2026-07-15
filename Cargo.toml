@@ -2,9 +2,20 @@
 name = "sim-moza-bridge"
 version = "0.2.0"
 edition = "2024"
+default-run = "sim-moza-bridge"
 description = "Game-profile telemetry bridge for forwarding, logging, and analyzing sim racing telemetry for MOZA Pit House."
 license = "MIT"
 repository = "https://github.com/JeminHeo/sim-moza-bridge"
 
+[dependencies]
+axum = "0.8.4"
+rusqlite = { version = "0.37.0", features = ["bundled"] }
+serde = { version = "1.0.219", features = ["derive"] }
+tokio = { version = "1.45.1", features = ["macros", "net", "rt-multi-thread", "signal", "sync", "time"] }
+
 [target.'cfg(any(target_os = "macos", target_os = "windows"))'.dependencies]
 eframe = "0.34.2"
+
+[[bin]]
+name = "lmu-dashboard"
+path = "src/bin/lmu_dashboard/main.rs"
