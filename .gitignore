@@ -7,4 +7,12 @@ target/
 *.log
 *.pcap
 *.bin
+*.csv
+*.sqlite
+*.sqlite3
+*.sqlite3-*
+*.db
+*.zst
+/analysis.md
 lmu-dashboard-data/
+acr-telemetry-data/

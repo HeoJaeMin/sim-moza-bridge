@@ -56,20 +56,20 @@ pub fn parse_lmu_snapshot(snapshot: &[u8]) -> Result<ParsedFrame, String> {
         ));
     }
 
-    let track_length_m = finite_or_zero(read_f64(snapshot, SCORING_OFFSET + 88)?);
+    let track_length_m = read_finite_f64(snapshot, SCORING_OFFSET + 88, "track length")?;
     let mut session = SessionState {
         id: String::new(),
         game_version,
         track_name: read_string(snapshot, SCORING_OFFSET, 64)?,
         session_type: session_type(read_i32(snapshot, SCORING_OFFSET + 64)?).to_owned(),
-        current_time_s: finite_or_zero(read_f64(snapshot, SCORING_OFFSET + 68)?),
-        time_remaining_s: finite_or_zero(read_f32(snapshot, SCORING_OFFSET + 340)? as f64),
+        current_time_s: read_finite_f64(snapshot, SCORING_OFFSET + 68, "session time")?,
+        time_remaining_s: read_finite_f32(snapshot, SCORING_OFFSET + 340, "time remaining")? as f64,
         max_laps: read_i32(snapshot, SCORING_OFFSET + 84)?,
         track_length_m,
         game_phase: read_u8(snapshot, SCORING_OFFSET + 108)?,
-        ambient_temp_c: finite_or_zero(read_f64(snapshot, SCORING_OFFSET + 228)?),
-        track_temp_c: finite_or_zero(read_f64(snapshot, SCORING_OFFSET + 236)?),
-        raining: finite_or_zero(read_f64(snapshot, SCORING_OFFSET + 220)?).clamp(0.0, 1.0),
+        ambient_temp_c: read_finite_f64(snapshot, SCORING_OFFSET + 228, "ambient temperature")?,
+        track_temp_c: read_finite_f64(snapshot, SCORING_OFFSET + 236, "track temperature")?,
+        raining: read_finite_f64(snapshot, SCORING_OFFSET + 220, "rain level")?.clamp(0.0, 1.0),
     };
 
     if session.track_name.is_empty() {
@@ -105,7 +105,11 @@ pub fn parse_lmu_snapshot(snapshot: &[u8]) -> Result<ParsedFrame, String> {
         let local_velocity = telemetry
             .get(&id)
             .map(|value| value.local_velocity)
-            .unwrap_or_else(|| read_point3(snapshot, base + 288).unwrap_or_default());
+            .filter(point_is_finite)
+            .map_or_else(
+                || read_finite_point3(snapshot, base + 288, "vehicle local velocity"),
+                Ok,
+            )?;
         let speed_kmh = vector_length(local_velocity) * 3.6;
         vehicles.push(VehicleState {
             id,
@@ -115,7 +119,7 @@ pub fn parse_lmu_snapshot(snapshot: &[u8]) -> Result<ParsedFrame, String> {
             class_name: read_string(snapshot, base + 200, 32)?,
             position: read_u8(snapshot, base + 199)?,
             completed_laps: read_i16(snapshot, base + 100)?,
-            lap_distance_m: finite_or_zero(read_f64(snapshot, base + 104)?),
+            lap_distance_m: read_finite_f64(snapshot, base + 104, "vehicle lap distance")?,
             best_lap_time_s: positive_finite(read_f64(snapshot, base + 144)?),
             last_lap_time_s: positive_finite(read_f64(snapshot, base + 168)?),
             interval_s: positive_or_zero(read_f64(snapshot, base + 232)?),
@@ -125,7 +129,7 @@ pub fn parse_lmu_snapshot(snapshot: &[u8]) -> Result<ParsedFrame, String> {
             in_pits: read_u8(snapshot, base + 198)? != 0,
             pit_state: read_u8(snapshot, base + 457)?,
             is_player: read_u8(snapshot, base + 196)? != 0,
-            world: read_point3(snapshot, base + 264)?.xz(),
+            world: read_finite_point3(snapshot, base + 264, "vehicle world position")?.xz(),
             speed_kmh,
         });
     }
@@ -186,15 +190,15 @@ fn detailed_telemetry(raw: RawTelemetry, vehicles: &[VehicleState]) -> VehicleTe
         vehicle_id: raw.id,
         lap_number: raw.lap_number,
         lap_distance_m: scoring.map_or(0.0, |vehicle| vehicle.lap_distance_m),
-        lap_elapsed_s: (raw.elapsed_time_s - raw.lap_start_s).max(0.0),
+        lap_elapsed_s: raw.elapsed_time_s - raw.lap_start_s,
         session_time_s: raw.elapsed_time_s,
         speed_kmh: vector_length(raw.local_velocity) * 3.6,
         rpm: raw.rpm,
         gear: raw.gear,
-        throttle: raw.throttle.clamp(0.0, 1.0),
-        brake: raw.brake.clamp(0.0, 1.0),
-        steer: raw.steer.clamp(-1.0, 1.0),
-        clutch: raw.clutch.clamp(0.0, 1.0),
+        throttle: raw.throttle,
+        brake: raw.brake,
+        steer: raw.steer,
+        clutch: raw.clutch,
         lateral_g: raw.local_acceleration.x / 9.806_65,
         longitudinal_g: raw.local_acceleration.z / 9.806_65,
         world: raw.position.xz(),
@@ -207,24 +211,24 @@ fn parse_telemetry(snapshot: &[u8], index: usize) -> Result<RawTelemetry, String
     let id = read_i32(snapshot, base)?;
     Ok(RawTelemetry {
         id,
-        elapsed_time_s: finite_or_zero(read_f64(snapshot, base + 12)?),
+        elapsed_time_s: read_f64(snapshot, base + 12)?,
         lap_number: read_i32(snapshot, base + 20)?,
-        lap_start_s: finite_or_zero(read_f64(snapshot, base + 24)?),
-        position: read_point3(snapshot, base + 160)?,
-        local_velocity: read_point3(snapshot, base + 184)?,
-        local_acceleration: read_point3(snapshot, base + 208)?,
+        lap_start_s: read_f64(snapshot, base + 24)?,
+        position: read_point3_raw(snapshot, base + 160)?,
+        local_velocity: read_point3_raw(snapshot, base + 184)?,
+        local_acceleration: read_point3_raw(snapshot, base + 208)?,
         gear: read_i32(snapshot, base + 352)?,
-        rpm: finite_or_zero(read_f64(snapshot, base + 356)?),
-        throttle: finite_or_zero(read_f64(snapshot, base + 388)?),
-        brake: finite_or_zero(read_f64(snapshot, base + 396)?),
-        steer: finite_or_zero(read_f64(snapshot, base + 404)?),
-        clutch: finite_or_zero(read_f64(snapshot, base + 412)?),
+        rpm: read_f64(snapshot, base + 356)?,
+        throttle: read_f64(snapshot, base + 388)?,
+        brake: read_f64(snapshot, base + 396)?,
+        steer: read_f64(snapshot, base + 404)?,
+        clutch: read_f64(snapshot, base + 412)?,
         lap_invalidated: read_u8(snapshot, base + 745)? != 0,
         impact: ImpactState {
             vehicle_id: id,
-            event_time_s: finite_or_zero(read_f64(snapshot, base + 552)?),
-            magnitude: finite_or_zero(read_f64(snapshot, base + 560)?),
-            position: read_point3(snapshot, base + 568)?,
+            event_time_s: read_f64(snapshot, base + 552)?,
+            magnitude: read_f64(snapshot, base + 560)?,
+            position: read_point3_raw(snapshot, base + 568)?,
         },
     })
 }
@@ -248,10 +252,6 @@ fn positive_or_zero(value: f64) -> Option<f64> {
     (value.is_finite() && value >= 0.0).then_some(value)
 }
 
-fn finite_or_zero(value: f64) -> f64 {
-    if value.is_finite() { value } else { 0.0 }
-}
-
 fn vector_length(value: Point3) -> f64 {
     value
         .x
@@ -259,12 +259,24 @@ fn vector_length(value: Point3) -> f64 {
         .sqrt()
 }
 
-fn read_point3(bytes: &[u8], offset: usize) -> Result<Point3, String> {
+fn read_finite_point3(bytes: &[u8], offset: usize, name: &str) -> Result<Point3, String> {
+    let point = read_point3_raw(bytes, offset)?;
+    if !point_is_finite(&point) {
+        return Err(format!("LMU {name} contains a non-finite value"));
+    }
+    Ok(point)
+}
+
+fn read_point3_raw(bytes: &[u8], offset: usize) -> Result<Point3, String> {
     Ok(Point3 {
-        x: finite_or_zero(read_f64(bytes, offset)?),
-        y: finite_or_zero(read_f64(bytes, offset + 8)?),
-        z: finite_or_zero(read_f64(bytes, offset + 16)?),
+        x: read_f64(bytes, offset)?,
+        y: read_f64(bytes, offset + 8)?,
+        z: read_f64(bytes, offset + 16)?,
     })
+}
+
+fn point_is_finite(point: &Point3) -> bool {
+    point.x.is_finite() && point.y.is_finite() && point.z.is_finite()
 }
 
 fn read_string(bytes: &[u8], offset: usize, length: usize) -> Result<String, String> {
@@ -300,6 +312,22 @@ fn read_f32(bytes: &[u8], offset: usize) -> Result<f32, String> {
 
 fn read_f64(bytes: &[u8], offset: usize) -> Result<f64, String> {
     read_array(bytes, offset).map(f64::from_le_bytes)
+}
+
+fn read_finite_f32(bytes: &[u8], offset: usize, name: &str) -> Result<f32, String> {
+    let value = read_f32(bytes, offset)?;
+    if !value.is_finite() {
+        return Err(format!("LMU {name} contains a non-finite value"));
+    }
+    Ok(value)
+}
+
+fn read_finite_f64(bytes: &[u8], offset: usize, name: &str) -> Result<f64, String> {
+    let value = read_f64(bytes, offset)?;
+    if !value.is_finite() {
+        return Err(format!("LMU {name} contains a non-finite value"));
+    }
+    Ok(value)
 }
 
 fn read_array<const N: usize>(bytes: &[u8], offset: usize) -> Result<[u8; N], String> {
@@ -403,6 +431,61 @@ mod tests {
                 .unwrap_err()
                 .contains("vehicle count")
         );
+    }
+
+    #[test]
+    fn preserves_non_finite_raw_telemetry_for_the_capture_validator() {
+        let mut snapshot = vec![0_u8; LMU_VIEW_SIZE];
+        write_string(&mut snapshot, SCORING_OFFSET, 64, "Synthetic");
+        write_i32(&mut snapshot, SCORING_OFFSET + 64, 10);
+        write_f64(&mut snapshot, SCORING_OFFSET + 68, 1.0);
+        write_f64(&mut snapshot, SCORING_OFFSET + 88, 1_000.0);
+        write_i32(&mut snapshot, SCORING_OFFSET + 104, 1);
+        write_i32(&mut snapshot, VEHICLE_SCORING_OFFSET, 7);
+        write_string(&mut snapshot, VEHICLE_SCORING_OFFSET + 200, 32, "Hypercar");
+        snapshot[VEHICLE_SCORING_OFFSET + 196] = 1;
+        snapshot[TELEMETRY_ACTIVE_VEHICLES_OFFSET] = 1;
+        snapshot[TELEMETRY_PLAYER_HAS_VEHICLE_OFFSET] = 1;
+        write_i32(&mut snapshot, TELEMETRY_INFO_OFFSET, 7);
+        write_f64(&mut snapshot, TELEMETRY_INFO_OFFSET + 12, 1.0);
+        write_f64(&mut snapshot, TELEMETRY_INFO_OFFSET + 24, 0.0);
+        write_f64(&mut snapshot, TELEMETRY_INFO_OFFSET + 356, f64::NAN);
+
+        let parsed = parse_lmu_snapshot(&snapshot).unwrap();
+
+        assert!(parsed.telemetry[0].rpm.is_nan());
+        assert!(parsed.player.as_ref().unwrap().rpm.is_nan());
+    }
+
+    #[test]
+    fn rejects_non_finite_session_time_instead_of_creating_a_false_reset() {
+        let mut snapshot = vec![0_u8; LMU_VIEW_SIZE];
+        write_string(&mut snapshot, SCORING_OFFSET, 64, "Synthetic");
+        write_i32(&mut snapshot, SCORING_OFFSET + 64, 10);
+        write_f64(&mut snapshot, SCORING_OFFSET + 68, f64::NAN);
+        write_f64(&mut snapshot, SCORING_OFFSET + 88, 1_000.0);
+
+        let error = parse_lmu_snapshot(&snapshot).unwrap_err();
+
+        assert!(error.contains("session time"));
+        assert!(error.contains("non-finite"));
+    }
+
+    #[test]
+    fn rejects_non_finite_scoring_position_instead_of_mapping_it_to_origin() {
+        let mut snapshot = vec![0_u8; LMU_VIEW_SIZE];
+        write_string(&mut snapshot, SCORING_OFFSET, 64, "Synthetic");
+        write_i32(&mut snapshot, SCORING_OFFSET + 64, 10);
+        write_f64(&mut snapshot, SCORING_OFFSET + 68, 10.0);
+        write_f64(&mut snapshot, SCORING_OFFSET + 88, 1_000.0);
+        write_i32(&mut snapshot, SCORING_OFFSET + 104, 1);
+        write_i32(&mut snapshot, VEHICLE_SCORING_OFFSET, 7);
+        write_f64(&mut snapshot, VEHICLE_SCORING_OFFSET + 264, f64::INFINITY);
+
+        let error = parse_lmu_snapshot(&snapshot).unwrap_err();
+
+        assert!(error.contains("vehicle world position"));
+        assert!(error.contains("non-finite"));
     }
 
     fn write_string(bytes: &mut [u8], offset: usize, length: usize, value: &str) {

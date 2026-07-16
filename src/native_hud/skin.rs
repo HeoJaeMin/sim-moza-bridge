@@ -565,7 +565,7 @@ fn paint_fraction_metric(
     );
     draw_label(
         painter,
-        rect.center() + vec2(-1.0 * scale, -3.0 * scale),
+        rect.center() + vec2(-scale, -3.0 * scale),
         Align2::CENTER_CENTER,
         "/",
         15.0 * scale,

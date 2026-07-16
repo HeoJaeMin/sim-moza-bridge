@@ -62,6 +62,7 @@ fn run_auto_runtime(config: BridgeConfig, hud: Option<HudHandle>) -> Result<(), 
     let mut last_lmu_warning = Instant::now() - WARNING_INTERVAL;
     let mut last_ace_warning = Instant::now() - WARNING_INTERVAL;
     let mut last_stats = Instant::now();
+    let mut shared_memory_readers = crate::adapters::AutoSharedMemoryReaders::default();
 
     println!(
         "{}\n{}\nf1_25_compat=on\ndebug={}",
@@ -86,7 +87,7 @@ fn run_auto_runtime(config: BridgeConfig, hud: Option<HudHandle>) -> Result<(), 
     print_enabled_outputs(&config);
     print_optional_hud(hud.is_some());
 
-    loop {
+    while !crate::runtime_control::shutdown_requested() {
         while let Some(update) = receive_udp_update(
             &receiver,
             &sender,
@@ -114,6 +115,7 @@ fn run_auto_runtime(config: BridgeConfig, hud: Option<HudHandle>) -> Result<(), 
                 &hud,
                 &mut source,
                 &mut frame_identifier,
+                &mut shared_memory_readers,
                 &mut last_lmu_warning,
                 &mut last_ace_warning,
             )? {
@@ -139,6 +141,7 @@ fn run_auto_runtime(config: BridgeConfig, hud: Option<HudHandle>) -> Result<(), 
 
         thread::sleep(LOOP_INTERVAL);
     }
+    Ok(())
 }
 
 fn receive_udp_update(
@@ -183,6 +186,7 @@ fn try_shared_memory_update(
     hud: &Option<HudHandle>,
     source: &mut RuntimeSource,
     frame_identifier: &mut u32,
+    shared_memory_readers: &mut crate::adapters::AutoSharedMemoryReaders,
     last_lmu_warning: &mut Instant,
     last_ace_warning: &mut Instant,
 ) -> Result<bool, String> {
@@ -191,6 +195,7 @@ fn try_shared_memory_update(
         let _ = hud;
         let _ = source;
         let _ = frame_identifier;
+        let _ = shared_memory_readers;
         let _ = last_lmu_warning;
         let _ = last_ace_warning;
         Ok(false)
@@ -198,41 +203,39 @@ fn try_shared_memory_update(
 
     #[cfg(windows)]
     {
-        if crate::adapters::lmu_mapping_exists() {
-            set_source(source, RuntimeSource::Lmu);
-            match crate::adapters::read_lmu_update(*frame_identifier) {
-                Ok(Some(update)) => {
+        match shared_memory_readers.read_lmu_update(*frame_identifier) {
+            Ok(crate::adapters::AutoSharedMemoryRead::Connected(update)) => {
+                set_source(source, RuntimeSource::Lmu);
+                if let Some(update) = update {
                     if let Some(hud) = hud {
                         hud.update(&update);
                     }
-                    return Ok(true);
                 }
-                Ok(None) => return Ok(true),
-                Err(error) => {
-                    warn_periodically(last_lmu_warning, &format!("[adapter-warning] {error}"));
-                    return Ok(false);
-                }
+                return Ok(true);
+            }
+            Ok(crate::adapters::AutoSharedMemoryRead::Unavailable) => {}
+            Err(error) => {
+                warn_periodically(last_lmu_warning, &format!("[adapter-warning] {error}"));
+                return Ok(false);
             }
         }
 
-        if crate::adapters::ace_mapping_exists() {
-            set_source(source, RuntimeSource::Ace);
-            match crate::adapters::read_ace_update(*frame_identifier) {
-                Ok(Some(update)) => {
+        match shared_memory_readers.read_ace_update(*frame_identifier) {
+            Ok(crate::adapters::AutoSharedMemoryRead::Connected(update)) => {
+                set_source(source, RuntimeSource::Ace);
+                if let Some(update) = update {
                     if let Some(hud) = hud {
                         hud.update(&update);
                     }
-                    return Ok(true);
                 }
-                Ok(None) => return Ok(true),
-                Err(error) => {
-                    warn_periodically(last_ace_warning, &format!("[adapter-warning] {error}"));
-                    return Ok(false);
-                }
+                Ok(true)
+            }
+            Ok(crate::adapters::AutoSharedMemoryRead::Unavailable) => Ok(false),
+            Err(error) => {
+                warn_periodically(last_ace_warning, &format!("[adapter-warning] {error}"));
+                Ok(false)
             }
         }
-
-        Ok(false)
     }
 }
 

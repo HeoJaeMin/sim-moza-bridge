@@ -6,6 +6,7 @@ const MIN_SAMPLE_RATE_HZ: f64 = 5.0;
 const MAX_SAMPLE_GAP_S: f64 = 1.0;
 const MIN_COMPLETE_COVERAGE: f64 = 0.92;
 const LAP_TIME_TOLERANCE_MS: u32 = 1_500;
+const MAX_UNBOUNDED_DISTANCE_M: f64 = 100_000.0;
 
 #[derive(Clone, Copy, Debug, Default, Deserialize, Eq, PartialEq, Serialize)]
 #[serde(rename_all = "snake_case")]
@@ -28,12 +29,16 @@ pub enum QualityReason {
     TimingMismatch,
     SparseSamples,
     SampleGap,
+    DuplicateSamples,
     NonMonotonicDistance,
     NonMonotonicTime,
+    DistanceOutOfRange,
+    ForwardDistanceSpike,
     ImplausibleTelemetry,
 }
 
 #[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
+#[serde(default)]
 pub struct TraceQuality {
     pub status: TraceQualityStatus,
     pub score: u8,
@@ -44,6 +49,7 @@ pub struct TraceQuality {
     pub sample_rate_hz: f64,
     pub max_gap_ms: u32,
     pub dropped_samples: u32,
+    pub duplicate_samples: u32,
     pub anomaly_count: u32,
 }
 
@@ -59,6 +65,7 @@ impl Default for TraceQuality {
             sample_rate_hz: 0.0,
             max_gap_ms: 0,
             dropped_samples: 0,
+            duplicate_samples: 0,
             anomaly_count: 0,
         }
     }
@@ -112,26 +119,55 @@ pub fn assess_trace(
 
     let mut positive_intervals = Vec::with_capacity(samples.len().saturating_sub(1));
     let mut distance_reversals = 0_u32;
+    let mut forward_spikes = 0_u32;
     let mut time_reversals = 0_u32;
+    let mut out_of_range_distances = 0_u32;
     let mut anomaly_count = 0_u32;
     let distance_backwards_tolerance = (track_length_m * 0.002).max(5.0);
+    let max_distance_m = if track_length_m >= 100.0 {
+        track_length_m * 1.05 + 50.0
+    } else {
+        MAX_UNBOUNDED_DISTANCE_M
+    };
 
     for (index, sample) in samples.iter().copied().enumerate() {
-        if !sample_is_plausible(sample) {
+        if !sample_is_plausible(sample, max_distance_m) {
             anomaly_count = anomaly_count.saturating_add(1);
+        }
+        if !sample.distance_m.is_finite()
+            || sample.distance_m < -50.0
+            || sample.distance_m > max_distance_m
+        {
+            out_of_range_distances = out_of_range_distances.saturating_add(1);
         }
         if index == 0 {
             continue;
         }
         let previous = samples[index - 1];
         let delta_time = sample.session_time_s - previous.session_time_s;
+        let delta_elapsed = sample.elapsed_s - previous.elapsed_s;
         if delta_time > 0.0 && delta_time.is_finite() {
             positive_intervals.push(delta_time);
         } else if delta_time < -f64::EPSILON {
             time_reversals = time_reversals.saturating_add(1);
+        } else if delta_time.abs() <= f64::EPSILON && delta_elapsed.abs() <= f64::EPSILON {
+            quality.duplicate_samples = quality.duplicate_samples.saturating_add(1);
         }
-        if previous.distance_m - sample.distance_m > distance_backwards_tolerance {
+        if delta_elapsed < -f64::EPSILON {
+            time_reversals = time_reversals.saturating_add(1);
+        }
+        let delta_distance = sample.distance_m - previous.distance_m;
+        if -delta_distance > distance_backwards_tolerance {
             distance_reversals = distance_reversals.saturating_add(1);
+        } else if delta_distance > 0.0 && delta_time.is_finite() {
+            let elapsed = delta_time.max(delta_elapsed).max(0.0);
+            let max_speed_kmh = previous.speed_kmh.max(sample.speed_kmh).clamp(0.0, 650.0);
+            let physically_plausible_distance =
+                (max_speed_kmh / 3.6 * elapsed * 3.0 + 50.0).max(100.0);
+            if delta_distance > physically_plausible_distance {
+                forward_spikes = forward_spikes.saturating_add(1);
+                anomaly_count = anomaly_count.saturating_add(1);
+            }
         }
     }
 
@@ -142,8 +178,14 @@ pub fn assess_trace(
     if time_reversals > 0 {
         push_reason(&mut quality, QualityReason::NonMonotonicTime, 40);
     }
+    if out_of_range_distances > 0 {
+        push_reason(&mut quality, QualityReason::DistanceOutOfRange, 50);
+    }
+    if forward_spikes > 0 {
+        push_reason(&mut quality, QualityReason::ForwardDistanceSpike, 50);
+    }
     let allowed_reversals = (samples.len() / 200).max(1) as u32;
-    if distance_reversals > allowed_reversals {
+    if distance_reversals > 0 {
         push_reason(&mut quality, QualityReason::NonMonotonicDistance, 35);
     }
 
@@ -154,10 +196,11 @@ pub fn assess_trace(
             quality.sample_rate_hz = round(1.0 / median_interval, 2);
             let max_gap = positive_intervals.iter().copied().fold(0.0_f64, f64::max);
             quality.max_gap_ms = seconds_to_ms(max_gap);
-            quality.dropped_samples = positive_intervals
-                .iter()
-                .map(|interval| ((*interval / median_interval).round() as i64 - 1).max(0) as u32)
-                .sum();
+            quality.dropped_samples = positive_intervals.iter().fold(0_u32, |total, interval| {
+                total.saturating_add(
+                        ((*interval / median_interval).round() as i64 - 1).max(0) as u32,
+                    )
+            });
             if quality.sample_rate_hz < MIN_SAMPLE_RATE_HZ {
                 push_reason(&mut quality, QualityReason::SparseSamples, 25);
             }
@@ -167,6 +210,9 @@ pub fn assess_trace(
         }
     } else if samples.len() > 1 {
         push_reason(&mut quality, QualityReason::SparseSamples, 25);
+    }
+    if quality.duplicate_samples > (samples.len() / 10).max(2) as u32 {
+        push_reason(&mut quality, QualityReason::DuplicateSamples, 15);
     }
 
     if track_length_m >= 100.0 {
@@ -231,6 +277,8 @@ pub fn assess_trace(
             QualityReason::GameInvalidated
                 | QualityReason::TimingMismatch
                 | QualityReason::NonMonotonicTime
+                | QualityReason::DistanceOutOfRange
+                | QualityReason::ForwardDistanceSpike
                 | QualityReason::ImplausibleTelemetry
         )
     }) || distance_reversals > allowed_reversals.saturating_mul(3);
@@ -242,6 +290,7 @@ pub fn assess_trace(
                 | QualityReason::InsufficientCoverage
                 | QualityReason::SparseSamples
                 | QualityReason::SampleGap
+                | QualityReason::DuplicateSamples
                 | QualityReason::NonMonotonicDistance
         )
     });
@@ -255,7 +304,7 @@ pub fn assess_trace(
     quality
 }
 
-fn sample_is_plausible(sample: QualitySample) -> bool {
+fn sample_is_plausible(sample: QualitySample, max_distance_m: f64) -> bool {
     sample.session_time_s.is_finite()
         && sample.elapsed_s.is_finite()
         && sample.distance_m.is_finite()
@@ -266,6 +315,7 @@ fn sample_is_plausible(sample: QualitySample) -> bool {
         && sample.session_time_s >= 0.0
         && sample.elapsed_s >= 0.0
         && sample.distance_m >= -50.0
+        && sample.distance_m <= max_distance_m
         && (0.0..=650.0).contains(&sample.speed_kmh)
         && (0.0..=30_000.0).contains(&sample.rpm)
         && (-1..=12).contains(&sample.gear)
@@ -345,6 +395,55 @@ mod tests {
 
         assert_eq!(quality.status, TraceQualityStatus::Rejected);
         assert_eq!(quality.anomaly_count, 1);
+    }
+
+    #[test]
+    fn rejects_distance_beyond_the_track_envelope() {
+        let mut samples = trace(0.0, 1_000.0, 11.0, 101);
+        samples[50].distance_m = 5_000.0;
+
+        let quality = assess_trace(&samples, 1_000.0, Some(11_000), false, true);
+
+        assert_eq!(quality.status, TraceQualityStatus::Rejected);
+        assert!(quality.reasons.contains(&QualityReason::DistanceOutOfRange));
+    }
+
+    #[test]
+    fn rejects_an_impossible_forward_distance_spike() {
+        let mut samples = trace(0.0, 10_000.0, 120.0, 121);
+        samples[50].distance_m += 1_000.0;
+
+        let quality = assess_trace(&samples, 10_000.0, Some(120_000), false, true);
+
+        assert_eq!(quality.status, TraceQualityStatus::Rejected);
+        assert!(
+            quality
+                .reasons
+                .contains(&QualityReason::ForwardDistanceSpike)
+        );
+    }
+
+    #[test]
+    fn one_distance_reversal_beyond_tolerance_is_partial() {
+        let mut samples = trace(0.0, 1_000.0, 11.0, 101);
+        samples[50].distance_m = 480.0;
+
+        let quality = assess_trace(&samples, 1_000.0, Some(11_000), false, true);
+
+        assert_eq!(quality.status, TraceQualityStatus::Partial);
+        assert!(
+            quality
+                .reasons
+                .contains(&QualityReason::NonMonotonicDistance)
+        );
+    }
+
+    #[test]
+    fn deserializes_legacy_quality_as_unknown() {
+        let quality: TraceQuality = serde_json::from_str("{}").unwrap();
+
+        assert_eq!(quality.status, TraceQualityStatus::Unknown);
+        assert_eq!(quality.score, 0);
     }
 
     fn trace(start_m: f64, end_m: f64, duration_s: f64, count: usize) -> Vec<QualitySample> {

@@ -16,13 +16,15 @@ pub fn run(config: BridgeConfig) -> Result<(), String> {
     let runtime_error = Arc::new(Mutex::new(None));
     let worker_error = Arc::clone(&runtime_error);
 
-    thread::spawn(move || {
-        if let Err(error) = crate::start_runtime_with_hud(config, Some(worker_hud)) {
+    let worker = thread::spawn(move || {
+        let result = crate::start_runtime_with_hud(config, Some(worker_hud));
+        if let Err(error) = &result {
             eprintln!("[startup-error] {error}");
             if let Ok(mut slot) = worker_error.lock() {
-                *slot = Some(error);
+                *slot = Some(error.clone());
             }
         }
+        result
     });
 
     let options = eframe::NativeOptions {
@@ -33,7 +35,7 @@ pub fn run(config: BridgeConfig) -> Result<(), String> {
         ..Default::default()
     };
 
-    eframe::run_native(
+    let window_result = eframe::run_native(
         "Sim MOZA Bridge",
         options,
         Box::new(move |cc| {
@@ -45,7 +47,13 @@ pub fn run(config: BridgeConfig) -> Result<(), String> {
             }))
         }),
     )
-    .map_err(|error| format!("native HUD failed: {error}"))
+    .map_err(|error| format!("native HUD failed: {error}"));
+    crate::runtime_control::request_shutdown();
+    let runtime_result = worker
+        .join()
+        .map_err(|_| "telemetry runtime panicked while shutting down".to_owned())?;
+    window_result?;
+    runtime_result
 }
 
 struct NativeHudApp {
@@ -56,6 +64,10 @@ struct NativeHudApp {
 
 impl eframe::App for NativeHudApp {
     fn ui(&mut self, ui: &mut egui::Ui, _frame: &mut eframe::Frame) {
+        if crate::runtime_control::shutdown_requested() {
+            ui.ctx().send_viewport_cmd(egui::ViewportCommand::Close);
+            return;
+        }
         ui.ctx().request_repaint_after(Duration::from_millis(40));
 
         let state = self.hud.snapshot();

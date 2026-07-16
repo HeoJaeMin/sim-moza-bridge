@@ -26,6 +26,9 @@ fn run_udp_bridge(config: BridgeConfig, hud: Option<HudHandle>) -> Result<(), St
         .map_err(|error| format!("bind failed: {error}"))?;
     let sender =
         UdpSocket::bind("0.0.0.0:0").map_err(|error| format!("sender bind failed: {error}"))?;
+    receiver
+        .set_read_timeout(Some(Duration::from_millis(100)))
+        .map_err(|error| format!("failed to set UDP shutdown timeout: {error}"))?;
     let target = format!("{}:{}", config.moza_host, config.moza_port);
     let mut bridge = TelemetryBridge::new(
         config.game,
@@ -60,10 +63,19 @@ fn run_udp_bridge(config: BridgeConfig, hud: Option<HudHandle>) -> Result<(), St
     print_enabled_outputs(&config);
     print_optional_hud(hud.is_some());
 
-    loop {
-        let (size, _) = receiver
-            .recv_from(&mut buffer)
-            .map_err(|error| format!("receive failed: {error}"))?;
+    while !crate::runtime_control::shutdown_requested() {
+        let (size, _) = match receiver.recv_from(&mut buffer) {
+            Ok(packet) => packet,
+            Err(error)
+                if matches!(
+                    error.kind(),
+                    std::io::ErrorKind::WouldBlock | std::io::ErrorKind::TimedOut
+                ) =>
+            {
+                continue;
+            }
+            Err(error) => return Err(format!("receive failed: {error}")),
+        };
         let packet = &buffer[..size];
 
         let Some(result) = bridge.process(packet) else {
@@ -110,6 +122,7 @@ fn run_udp_bridge(config: BridgeConfig, hud: Option<HudHandle>) -> Result<(), St
             last_stats = Instant::now();
         }
     }
+    Ok(())
 }
 
 fn is_loopback_host(host: &str) -> bool {

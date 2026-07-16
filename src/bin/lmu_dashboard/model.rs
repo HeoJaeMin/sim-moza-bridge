@@ -1,5 +1,6 @@
 use serde::{Deserialize, Serialize};
 
+use crate::telemetry_core::SessionIdentity;
 use crate::telemetry_quality::TraceQuality;
 
 #[derive(Clone, Copy, Debug, Default, Deserialize, PartialEq, Serialize)]
@@ -45,6 +46,15 @@ pub struct SessionState {
     pub ambient_temp_c: f64,
     pub track_temp_c: f64,
     pub raining: f64,
+}
+
+impl SessionState {
+    pub fn identity(&self) -> SessionIdentity {
+        SessionIdentity::new("lmu", &self.track_name, &self.session_type)
+            .with_track_length(self.track_length_m)
+            .with_game_version(self.game_version)
+            .with_max_laps(self.max_laps)
+    }
 }
 
 #[derive(Clone, Debug, Default, Serialize)]
@@ -162,6 +172,8 @@ pub struct LapSummary {
     #[serde(default)]
     pub session_type: String,
     #[serde(default)]
+    pub track_length_m: f64,
+    #[serde(default)]
     pub vehicle_id: i32,
     #[serde(default)]
     pub driver_name: String,
@@ -205,10 +217,30 @@ pub struct CaptureHealth {
     pub accepted_frames: u64,
     pub rejected_frames: u64,
     pub duplicate_frames: u64,
+    pub stalled_frames: u64,
+    pub inconsistent_frames: u64,
     pub invalid_session_frames: u64,
+    pub telemetry_accepted_samples: u64,
+    pub telemetry_rejected_samples: u64,
+    pub telemetry_duplicate_samples: u64,
+    pub telemetry_backward_samples: u64,
+    pub telemetry_delayed_samples: u64,
+    pub telemetry_sudden_change_samples: u64,
     pub last_frame_age_ms: u64,
     pub session_resumed: bool,
+    pub paused: bool,
+    pub operator_paused: bool,
     pub current_quality: TraceQuality,
+    pub persistence: PersistenceHealth,
+}
+
+#[derive(Clone, Debug, Default, Serialize)]
+pub struct PersistenceHealth {
+    pub queued: u64,
+    pub written: u64,
+    pub failed: u64,
+    pub pending: u64,
+    pub last_error: Option<String>,
 }
 
 #[derive(Clone, Debug, Default, Deserialize, Serialize)]
@@ -256,6 +288,16 @@ pub struct LiveSnapshot {
     pub recent_contacts: Vec<ContactEvent>,
     pub current_lap: Option<CurrentLapInfo>,
     pub capture: CaptureHealth,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct ClassLeaderIdentity {
+    pub session_id: String,
+    pub vehicle_id: i32,
+    pub driver_name: String,
+    pub class_name: String,
+    pub player_vehicle_id: i32,
+    pub player_driver_name: String,
 }
 
 #[derive(Clone, Debug, Default, Serialize)]

@@ -1,0 +1,27 @@
+{
+  "schema_version": 1,
+  "source": "synthetic-anonymous",
+  "cases": [
+    {
+      "name": "countdown_running_official_finish",
+      "frames": [
+        { "at_ms": 0, "packet_id": 1, "status": 0, "distance_m": 0.0, "speed_kmh": 0.0, "engine_running": false, "current_time_ms": 0, "last_time_ms": 0, "completed_laps": 0, "expected_stage": 1, "expected_state": "idle", "expected_event": "none", "expected_invalid": false },
+        { "at_ms": 100, "packet_id": 2, "status": 2, "distance_m": 0.0, "speed_kmh": 0.0, "engine_running": true, "current_time_ms": 0, "last_time_ms": 0, "completed_laps": 0, "expected_stage": 1, "expected_state": "countdown", "expected_event": "none", "expected_invalid": false },
+        { "at_ms": 200, "packet_id": 3, "status": 2, "distance_m": 5.0, "speed_kmh": 18.0, "engine_running": true, "current_time_ms": 100, "last_time_ms": 0, "completed_laps": 0, "expected_stage": 1, "expected_state": "running", "expected_event": "started", "expected_invalid": false },
+        { "at_ms": 1200, "packet_id": 4, "status": 2, "distance_m": 800.0, "speed_kmh": 105.0, "engine_running": true, "current_time_ms": 1100, "last_time_ms": 0, "completed_laps": 0, "expected_stage": 1, "expected_state": "running", "expected_event": "none", "expected_invalid": false },
+        { "at_ms": 2200, "packet_id": 5, "status": 2, "distance_m": 1500.0, "speed_kmh": 92.0, "engine_running": true, "current_time_ms": 2100, "last_time_ms": 120000, "completed_laps": 1, "expected_stage": 1, "expected_state": "finished", "expected_event": "finished", "expected_invalid": false }
+      ]
+    },
+    {
+      "name": "failure_recovery_next_attempt",
+      "frames": [
+        { "at_ms": 0, "packet_id": 1, "status": 2, "distance_m": 0.0, "speed_kmh": 0.0, "engine_running": true, "current_time_ms": 0, "last_time_ms": 0, "completed_laps": 0, "expected_stage": 1, "expected_state": "countdown", "expected_event": "none", "expected_invalid": false },
+        { "at_ms": 100, "packet_id": 2, "status": 2, "distance_m": 5.0, "speed_kmh": 20.0, "engine_running": true, "current_time_ms": 100, "last_time_ms": 0, "completed_laps": 0, "expected_stage": 1, "expected_state": "running", "expected_event": "started", "expected_invalid": false },
+        { "at_ms": 1100, "packet_id": 3, "status": 2, "distance_m": 1200.0, "speed_kmh": 95.0, "engine_running": true, "current_time_ms": 1100, "last_time_ms": 0, "completed_laps": 0, "expected_stage": 1, "expected_state": "running", "expected_event": "none", "expected_invalid": false },
+        { "at_ms": 1200, "packet_id": 4, "status": 2, "distance_m": 600.0, "speed_kmh": 12.0, "engine_running": true, "current_time_ms": 1200, "last_time_ms": 0, "completed_laps": 0, "expected_stage": 1, "expected_state": "recovery", "expected_event": "recovery", "expected_invalid": true },
+        { "at_ms": 1300, "packet_id": 5, "status": 2, "distance_m": 10.0, "speed_kmh": 0.0, "engine_running": true, "current_time_ms": 0, "last_time_ms": 0, "completed_laps": 0, "expected_stage": 2, "expected_state": "countdown", "expected_event": "next_attempt", "expected_invalid": false },
+        { "at_ms": 1400, "packet_id": 6, "status": 2, "distance_m": 20.0, "speed_kmh": 25.0, "engine_running": true, "current_time_ms": 100, "last_time_ms": 0, "completed_laps": 0, "expected_stage": 2, "expected_state": "running", "expected_event": "started", "expected_invalid": false }
+      ]
+    }
+  ]
+}

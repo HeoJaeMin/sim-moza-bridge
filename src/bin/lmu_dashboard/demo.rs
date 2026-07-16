@@ -6,7 +6,9 @@ use crate::model::{
 
 const TRACK_LENGTH_M: f64 = 5_891.0;
 const PLAYER_INDEX: usize = 7;
-const DEMO_SPEED: f64 = 8.0;
+// Keep the accelerated session clock below 4x so 20 Hz demo polling still
+// satisfies the shared quality model's 5 Hz minimum in session time.
+const DEMO_SPEED: f64 = 3.5;
 
 const DRIVERS: [&str; 24] = [
     "M. Campbell",

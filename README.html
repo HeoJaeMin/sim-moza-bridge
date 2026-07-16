@@ -80,15 +80,18 @@
         <tr><td>UDP Format</td><td><code>2025</code></td></tr>
       </tbody>
     </table>
-    <h2>LMU / ACE 설정</h2>
-    <p>LMU와 ACE는 F1 25처럼 게임 안 UDP 포트만 맞추는 방식으로 이 브리지에 직접 연결되지 않습니다. Windows 게임 PC에서 각 게임을 실행한 뒤 해당 adapter를 선택합니다.</p>
+    <h2>LMU / ACE / ACR 설정</h2>
+    <p>LMU, ACE, ACR은 F1 25처럼 게임 안 UDP 포트만 맞추는 방식으로 이 브리지에 직접 연결되지 않습니다. Windows 게임 PC에서 각 게임을 실행한 뒤 해당 adapter를 선택합니다.</p>
     <pre><code>cargo run -- --game lmu
-cargo run -- --game ace</code></pre>
+cargo run -- --game ace
+cargo run -- --game acr</code></pre>
     <ul>
       <li>기본 <code>cargo run</code>은 F1 UDP, <code>LMU_Data</code>, <code>Local\acevo_pmf_physics</code>를 함께 감시합니다. LMU를 하다가 F1 25를 시작해도 브리지를 껐다 켤 필요 없이 F1 UDP가 들어오면 자동으로 F1 경로를 우선합니다.</li>
-      <li><code>--game lmu</code>와 <code>--game ace</code>는 해당 adapter 고정 실행입니다.</li>
+      <li><code>--game lmu</code>, <code>--game ace</code>, <code>--game acr</code>은 해당 adapter 고정 실행입니다.</li>
       <li>LMU adapter는 <code>LMU_Data</code> 공유 메모리를 읽고 HUD에 속도, RPM, 기어, 입력, 타이어/브레이크, 연료, 앞/뒤 차 gap을 표시합니다.</li>
+      <li>LMU 대시보드는 활성 scoring row와 telemetry block 각각의 안정성을 확인하며, 비정상 telemetry는 저장 전에 거부·집계합니다.</li>
       <li>ACE adapter는 <code>Local\acevo_pmf_physics</code> 공유 메모리를 읽고 HUD에 기본 주행 텔레메트리를 표시합니다.</li>
+      <li>ACR adapter는 <code>Local\acpmf_physics</code>, <code>Local\acpmf_graphics</code>, <code>Local\acpmf_static</code>을 읽어 주행 값과 스테이지 정보를 결합합니다.</li>
       <li>공유 메모리가 아직 없으면 Windows에서는 adapter가 켜진 상태로 게임 세션을 기다립니다.</li>
     </ul>
 
@@ -103,13 +106,20 @@ cargo run -- --game ace</code></pre>
     <pre><code>cargo run -- --debug</code></pre>
     <p>F1 UDP 입력을 CSV와 Markdown 분석 파일로 남길 수 있습니다.</p>
     <pre><code>cargo run -- --input-log inputs.csv --corner-log corners.csv --analysis-report analysis.md</code></pre>
+    <p>ACR의 검증된 live frame을 스테이지별 zstd raw와 JSON/Markdown 분석으로 저장하려면 archive 경로를 지정합니다. 분석과 선택적 legacy CSV는 기본 25 Hz이며 20~50 Hz 사이에서 설정할 수 있습니다.</p>
+    <pre><code>cargo run -- --game acr --headless --archive-dir acr-telemetry-data
+
+cargo run -- --game acr --headless --archive-dir acr-telemetry-data \
+  --acr-finish-distance-m 12450.5 --acr-target-time-s 418.25</code></pre>
+    <p><code>Ctrl-C</code> 또는 네이티브 HUD 창 닫기는 저장 queue를 flush하고 zstd stream을 정상 종료합니다.</p>
+    <p>안정 복사, capture 카운터, 세션 identity/context, 4-state 품질과 분석 신뢰도·한계는 LMU와 ACR이 공통 library core에서 재사용합니다. 게임별 상태 머신, 공식 이벤트 해석과 저장·코칭 알고리즘은 각 adapter에 유지합니다.</p>
     <p>브리지가 시작되면 로컬 HUD가 Rust native 창으로 열립니다. macOS에서는 macOS 창, Windows에서는 Windows 창으로 실행됩니다.</p>
     <p>HUD에는 속도, 기어, RPM, REV LED, 입력 추적, 타이어/브레이크 상태, 앞차/뒤차/선두 gap, 연료, ERS, 손상 패널이 기본으로 표시됩니다.</p>
 
     <h2>LMU 레이싱 대시보드</h2>
-    <p>LMU용 트랙 맵, 전체 리더보드, 랩별 텔레메트리 저장, 접촉 기록을 한 화면에서 보는 별도 웹 대시보드를 실행할 수 있습니다.</p>
+    <p>LMU용 트랙 맵, 전체 리더보드, 랩별 텔레메트리 저장, 접촉 기록을 한 화면에서 보는 별도 웹 대시보드를 실행할 수 있습니다. UI에는 클래스와 관계없이 전체 차량을 표시하지만, 상세 랩 텔레메트리 저장과 코칭은 플레이어와 같은 클래스만 대상으로 합니다.</p>
     <pre><code>cargo run --bin lmu-dashboard -- --live</code></pre>
-    <p>게임 없이 새 UI를 확인하려면 <code>--demo</code>를 사용합니다. 실행 방법, 태블릿 연결, 저장 위치와 접촉 판정의 한계는 <a href="docs/lmu-dashboard.md">LMU 레이싱 대시보드 문서</a>에 정리되어 있습니다.</p>
+    <p>코칭은 인게임 오버레이가 아니라 웹 대시보드와 별도 UTF-8 보고서에서 제공합니다. 게임 없이 새 UI를 확인하려면 <code>--demo</code>를 사용합니다. 실행 방법, 수집 제어, SQLite migration, Windows 실게임 확인 절차와 접촉 판정의 한계는 <a href="docs/lmu-dashboard.md">LMU 레이싱 대시보드 문서</a>에 정리되어 있습니다.</p>
 
     <h2>동작 방식</h2>
     <ul>
@@ -128,9 +138,16 @@ cargo run -- --game ace</code></pre>
         <tr><td><code>--game</code></td><td><code>auto</code></td><td><code>auto</code>, <code>f1-25</code>, <code>generic-udp</code>, <code>lmu</code>, <code>ace</code>, <code>acr</code> 중 선택</td></tr>
         <tr><td><code>--listen</code></td><td><code>20777</code></td><td>F1 25 UDP를 받는 포트</td></tr>
         <tr><td><code>--moza-port</code></td><td><code>22025</code></td><td>MOZA Pit House로 전달할 포트</td></tr>
-        <tr><td><code>--input-log</code></td><td>없음</td><td>F1 입력 샘플 CSV 누적 파일</td></tr>
+        <tr><td><code>--input-log</code></td><td>없음</td><td>입력 샘플 CSV 누적 파일. ACR은 코칭용 확장 채널을 기록</td></tr>
         <tr><td><code>--corner-log</code></td><td>없음</td><td>완료 랩 구간 요약 CSV 누적 파일</td></tr>
         <tr><td><code>--analysis-report</code></td><td>없음</td><td>최신 완료 랩 분석 Markdown 파일</td></tr>
+        <tr><td><code>--archive-dir</code></td><td>없음</td><td>ACR raw zstd와 JSON/Markdown 분석 저장 경로</td></tr>
+        <tr><td><code>--analysis-rate-hz</code></td><td><code>25</code></td><td>ACR 코칭 분석 및 legacy CSV 주기(<code>20</code>~<code>50</code> Hz)</td></tr>
+        <tr><td><code>--raw-retention-days</code></td><td><code>7</code></td><td>ACR zstd 원본 보존 일수</td></tr>
+        <tr><td><code>--analysis-retention-days</code></td><td><code>90</code></td><td>ACR 분석 결과 보존 일수</td></tr>
+        <tr><td><code>--acr-finish-distance-m</code></td><td>없음</td><td>공식 결과 신호가 없을 때 사용할 수동 결승 거리(m)</td></tr>
+        <tr><td><code>--acr-target-time-s</code></td><td>없음</td><td>랠리 코칭 목표 시간(초)</td></tr>
+        <tr><td><code>--headless</code></td><td><code>false</code></td><td>네이티브 HUD를 열지 않고 수집기만 실행</td></tr>
         <tr><td><code>--debug</code></td><td><code>false</code></td><td>패치 로그와 초당 통계 출력</td></tr>
       </tbody>
     </table>

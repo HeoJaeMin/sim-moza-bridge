@@ -35,6 +35,69 @@
         <span id="warning-text"></span>
       </div>
 
+      <div class="command-bar">
+        <nav class="view-tabs tab-bar" role="tablist" aria-label="대시보드 화면">
+          <button
+            id="live-tab"
+            class="view-tab tab-button is-active"
+            type="button"
+            role="tab"
+            aria-selected="true"
+            aria-controls="live-view"
+          >
+            <span>LIVE</span>
+            실시간 대시보드
+          </button>
+          <button
+            id="analysis-tab"
+            class="view-tab tab-button"
+            type="button"
+            role="tab"
+            aria-selected="false"
+            aria-controls="analysis-view"
+          >
+            <span>COACH</span>
+            세션 분석
+          </button>
+        </nav>
+        <div class="control-actions" aria-label="수집 제어">
+          <button id="pause-button" class="control-button" type="button">수집 일시정지</button>
+          <button id="resume-button" class="control-button" type="button">수집 재개</button>
+          <button id="shutdown-button" class="control-button is-danger" type="button">종료 · 저장</button>
+        </div>
+      </div>
+
+      <section class="capture-strip" aria-labelledby="capture-heading" aria-live="polite">
+        <div class="capture-title">
+          <p class="eyebrow">CAPTURE HEALTH</p>
+          <strong id="capture-heading">수집 상태</strong>
+          <span id="capture-state" class="capture-state">대기</span>
+        </div>
+        <dl class="capture-metrics">
+          <div><dt>샘플링</dt><dd id="capture-rate">0.0 Hz</dd></div>
+          <div><dt>수락</dt><dd id="capture-accepted">0</dd></div>
+          <div><dt>거절</dt><dd id="capture-rejected">0</dd></div>
+          <div><dt>중복</dt><dd id="capture-duplicates">0</dd></div>
+          <div><dt>정지</dt><dd id="capture-stalled">0</dd></div>
+          <div><dt>복사 불일치</dt><dd id="capture-inconsistent">0</dd></div>
+          <div><dt>잘못된 세션</dt><dd id="capture-invalid-sessions">0</dd></div>
+          <div><dt>텔레메트리 수락</dt><dd id="capture-telemetry-accepted">0</dd></div>
+          <div><dt>텔레메트리 거절</dt><dd id="capture-telemetry-rejected">0</dd></div>
+          <div><dt>텔레메트리 중복</dt><dd id="capture-telemetry-duplicates">0</dd></div>
+          <div><dt>시간·거리 역행</dt><dd id="capture-telemetry-backward">0</dd></div>
+          <div><dt>지연 샘플</dt><dd id="capture-telemetry-delayed">0</dd></div>
+          <div><dt>순간 급변</dt><dd id="capture-telemetry-sudden">0</dd></div>
+          <div><dt>마지막 프레임</dt><dd id="capture-age">—</dd></div>
+          <div><dt>저장 큐 / 대기</dt><dd id="persistence-pending">0 / 0</dd></div>
+          <div><dt>저장 완료 / 실패</dt><dd id="persistence-result">0 / 0</dd></div>
+        </dl>
+        <p id="capture-note" class="capture-note">LMU 텔레메트리를 기다리고 있습니다.</p>
+      </section>
+
+      <div id="control-feedback" class="control-feedback" role="status" aria-live="polite" hidden></div>
+
+      <div id="live-view" class="dashboard-view" role="tabpanel" aria-labelledby="live-tab">
+
       <section class="panel session-panel" aria-labelledby="session-heading">
         <div class="panel-heading session-heading-row">
           <div>
@@ -195,6 +258,125 @@
           </div>
         </section>
       </main>
+      </div>
+
+      <section
+        id="analysis-view"
+        class="dashboard-view analysis-view"
+        role="tabpanel"
+        aria-labelledby="analysis-tab"
+        hidden
+      >
+        <section class="panel analysis-overview" aria-labelledby="analysis-heading">
+          <div>
+            <p class="eyebrow">SESSION COACH</p>
+            <h2 id="analysis-heading">동일 클래스 세션 분석</h2>
+            <p id="analysis-message" class="analysis-message">LMU 세션 분석을 기다리고 있습니다.</p>
+          </div>
+          <div class="analysis-status-block">
+            <span id="analysis-status" class="analysis-status">WAITING</span>
+            <span id="analysis-generated">아직 생성되지 않음</span>
+          </div>
+          <dl class="analysis-session-meta">
+            <div><dt>트랙</dt><dd id="analysis-track">—</dd></div>
+            <div><dt>세션</dt><dd id="analysis-session">—</dd></div>
+            <div><dt>분석 클래스</dt><dd id="analysis-class">—</dd></div>
+          </dl>
+        </section>
+
+        <section class="analysis-summary-grid" aria-label="분석 코호트 요약">
+          <article class="metric-card analysis-card">
+            <span>동일 클래스 드라이버</span>
+            <strong id="cohort-participants">0</strong>
+            <small>유효 랩을 가진 참가자</small>
+          </article>
+          <article class="metric-card analysis-card">
+            <span>유효 랩</span>
+            <strong id="cohort-valid-laps">0</strong>
+            <small>Partial / Rejected 제외</small>
+          </article>
+          <article class="metric-card analysis-card">
+            <span>상위 25%</span>
+            <strong id="cohort-top-count">0</strong>
+            <small id="cohort-top-median">중앙값 —</small>
+          </article>
+        </section>
+
+        <section class="analysis-grid analysis-benchmarks" aria-label="드라이버 벤치마크">
+          <article class="panel benchmark-card analysis-card is-player">
+            <div class="benchmark-label"><span>YOU</span>내 기록</div>
+            <div id="player-benchmark" class="benchmark-content"></div>
+          </article>
+          <article class="panel benchmark-card analysis-card is-p1">
+            <div class="benchmark-label"><span>P1</span>실제 클래스 1위</div>
+            <div id="p1-benchmark" class="benchmark-content"></div>
+          </article>
+          <article class="panel benchmark-card analysis-card">
+            <div class="benchmark-label"><span>CAPTURED</span>수집 최속</div>
+            <div id="fastest-benchmark" class="benchmark-content"></div>
+          </article>
+        </section>
+
+        <section class="panel focus-panel" aria-labelledby="focus-heading">
+          <div class="panel-heading panel-heading-inline">
+            <div>
+              <p class="eyebrow">PRIORITY COACHING</p>
+              <h2 id="focus-heading">우선 개선 구간</h2>
+            </div>
+            <span id="focus-count" class="count-badge">0</span>
+          </div>
+          <div id="focus-zones" class="focus-zones"></div>
+          <div id="focus-empty" class="analysis-inline-empty">분석 가능한 손실 구간을 기다리고 있습니다.</div>
+        </section>
+
+        <section class="panel segments-panel" aria-labelledby="segments-heading">
+          <div class="panel-heading panel-heading-inline">
+            <div>
+              <p class="eyebrow">20-SEGMENT BREAKDOWN</p>
+              <h2 id="segments-heading">구간별 손익</h2>
+            </div>
+            <span id="segments-count" class="count-badge">0</span>
+          </div>
+          <div class="segments-scroll">
+            <table class="segments-table">
+              <thead>
+                <tr>
+                  <th scope="col">구간</th>
+                  <th scope="col">거리</th>
+                  <th scope="col" class="numeric">내 시간</th>
+                  <th scope="col" class="numeric">실제 P1</th>
+                  <th scope="col" class="numeric">P1 대비</th>
+                  <th scope="col" class="numeric">P1 누적</th>
+                  <th scope="col" class="numeric">순위 · 백분위</th>
+                  <th scope="col">판정</th>
+                  <th scope="col">신뢰도 · 샘플</th>
+                </tr>
+              </thead>
+              <tbody id="segments-body"></tbody>
+            </table>
+            <div id="segments-empty" class="analysis-inline-empty">유효한 비교 구간이 없습니다.</div>
+          </div>
+        </section>
+
+        <section class="analysis-grid analysis-quality-grid">
+          <section class="panel quality-panel" aria-labelledby="exclusions-heading">
+            <div class="panel-heading">
+              <p class="eyebrow">DATA QUALITY</p>
+              <h2 id="exclusions-heading">제외 데이터</h2>
+            </div>
+            <div id="exclusions-list" class="quality-list"></div>
+            <div id="exclusions-empty" class="analysis-inline-empty">제외된 데이터가 없습니다.</div>
+          </section>
+          <section class="panel quality-panel" aria-labelledby="limitations-heading">
+            <div class="panel-heading">
+              <p class="eyebrow">INTERPRETATION LIMITS</p>
+              <h2 id="limitations-heading">분석 한계</h2>
+            </div>
+            <ul id="limitations-list" class="limitations-list"></ul>
+            <div id="limitations-empty" class="analysis-inline-empty">등록된 분석 한계가 없습니다.</div>
+          </section>
+        </section>
+      </section>
 
       <footer class="app-footer">
         <span>LMU LOCAL DASHBOARD</span>

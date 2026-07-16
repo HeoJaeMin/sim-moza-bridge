@@ -1,7 +1,7 @@
 use std::time::{Duration, Instant};
 
 use crate::model::{ParsedFrame, TrackPoint};
-use crate::store::{DashboardStore, track_key};
+use crate::store::{DashboardStore, PersistenceQueue, track_key};
 
 const BUCKET_LENGTH_M: f64 = 10.0;
 const SAVE_INTERVAL: Duration = Duration::from_secs(10);
@@ -15,6 +15,7 @@ struct TrackBin {
 
 pub struct TrackMapper {
     store: DashboardStore,
+    persistence: PersistenceQueue,
     key: String,
     track_name: String,
     track_length_m: f64,
@@ -24,9 +25,10 @@ pub struct TrackMapper {
 }
 
 impl TrackMapper {
-    pub fn new(store: DashboardStore) -> Self {
+    pub fn new(store: DashboardStore, persistence: PersistenceQueue) -> Self {
         Self {
             store,
+            persistence,
             key: String::new(),
             track_name: String::new(),
             track_length_m: 0.0,
@@ -71,8 +73,12 @@ impl TrackMapper {
 
         let points = self.points();
         if self.dirty && self.last_save.elapsed() >= SAVE_INTERVAL && points.len() >= 20 {
-            self.store
-                .save_track(&self.key, &self.track_name, self.track_length_m, &points)?;
+            self.persistence.save_track(
+                self.key.clone(),
+                self.track_name.clone(),
+                self.track_length_m,
+                points.clone(),
+            )?;
             self.dirty = false;
             self.last_save = Instant::now();
         }
@@ -85,8 +91,12 @@ impl TrackMapper {
         }
         let points = self.points();
         if !points.is_empty() {
-            self.store
-                .save_track(&self.key, &self.track_name, self.track_length_m, &points)?;
+            self.persistence.save_track(
+                self.key.clone(),
+                self.track_name.clone(),
+                self.track_length_m,
+                points,
+            )?;
         }
         self.dirty = false;
         Ok(())
@@ -148,7 +158,8 @@ mod tests {
     fn learns_track_points_in_lap_distance_order() {
         let path = std::env::temp_dir().join(format!("lmu-track-test-{}", unix_ms()));
         let store = DashboardStore::open(&path).unwrap();
-        let mut mapper = TrackMapper::new(store);
+        let worker = crate::store::PersistenceWorker::start(store.clone());
+        let mut mapper = TrackMapper::new(store, worker.queue());
         let frame = ParsedFrame {
             session: SessionState {
                 track_name: "Test Circuit".to_owned(),
@@ -176,6 +187,7 @@ mod tests {
         assert_eq!(points.len(), 2);
         assert!(points[0].lap_distance_m < points[1].lap_distance_m);
         assert_eq!(points[0].x, 1.0);
+        worker.queue().flush().unwrap();
         fs::remove_dir_all(path).ok();
     }
 }

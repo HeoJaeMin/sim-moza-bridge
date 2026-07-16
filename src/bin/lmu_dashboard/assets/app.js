@@ -2,6 +2,7 @@
 
 const LIVE_POLL_MS = 250;
 const TRACE_POLL_MS = 1000;
+const ANALYSIS_POLL_MS = 2000;
 const SVG_NS = "http://www.w3.org/2000/svg";
 const MAP_WIDTH = 1000;
 const MAP_HEIGHT = 640;
@@ -18,6 +19,10 @@ const state = {
   trackProjection: null,
   contactsKey: "",
   lapOptionsKey: "",
+  analysis: null,
+  activeView: "live",
+  controlBusy: false,
+  shutdownRequested: false,
 };
 
 const elements = {
@@ -26,6 +31,33 @@ const elements = {
   sourceLabel: document.querySelector("#source-label"),
   warningBanner: document.querySelector("#warning-banner"),
   warningText: document.querySelector("#warning-text"),
+  liveTab: document.querySelector("#live-tab"),
+  analysisTab: document.querySelector("#analysis-tab"),
+  liveView: document.querySelector("#live-view"),
+  analysisView: document.querySelector("#analysis-view"),
+  pauseButton: document.querySelector("#pause-button"),
+  resumeButton: document.querySelector("#resume-button"),
+  shutdownButton: document.querySelector("#shutdown-button"),
+  controlFeedback: document.querySelector("#control-feedback"),
+  captureStrip: document.querySelector(".capture-strip"),
+  captureState: document.querySelector("#capture-state"),
+  captureRate: document.querySelector("#capture-rate"),
+  captureAccepted: document.querySelector("#capture-accepted"),
+  captureRejected: document.querySelector("#capture-rejected"),
+  captureDuplicates: document.querySelector("#capture-duplicates"),
+  captureStalled: document.querySelector("#capture-stalled"),
+  captureInconsistent: document.querySelector("#capture-inconsistent"),
+  captureInvalidSessions: document.querySelector("#capture-invalid-sessions"),
+  captureTelemetryAccepted: document.querySelector("#capture-telemetry-accepted"),
+  captureTelemetryRejected: document.querySelector("#capture-telemetry-rejected"),
+  captureTelemetryDuplicates: document.querySelector("#capture-telemetry-duplicates"),
+  captureTelemetryBackward: document.querySelector("#capture-telemetry-backward"),
+  captureTelemetryDelayed: document.querySelector("#capture-telemetry-delayed"),
+  captureTelemetrySudden: document.querySelector("#capture-telemetry-sudden"),
+  captureAge: document.querySelector("#capture-age"),
+  persistencePending: document.querySelector("#persistence-pending"),
+  persistenceResult: document.querySelector("#persistence-result"),
+  captureNote: document.querySelector("#capture-note"),
   sessionPhase: document.querySelector("#session-phase"),
   sessionTrack: document.querySelector("#session-track"),
   sessionType: document.querySelector("#session-type"),
@@ -50,6 +82,29 @@ const elements = {
   contactsList: document.querySelector("#contacts-list"),
   contactsCount: document.querySelector("#contacts-count"),
   contactsEmpty: document.querySelector("#contacts-empty"),
+  analysisStatus: document.querySelector("#analysis-status"),
+  analysisMessage: document.querySelector("#analysis-message"),
+  analysisGenerated: document.querySelector("#analysis-generated"),
+  analysisTrack: document.querySelector("#analysis-track"),
+  analysisSession: document.querySelector("#analysis-session"),
+  analysisClass: document.querySelector("#analysis-class"),
+  cohortParticipants: document.querySelector("#cohort-participants"),
+  cohortValidLaps: document.querySelector("#cohort-valid-laps"),
+  cohortTopCount: document.querySelector("#cohort-top-count"),
+  cohortTopMedian: document.querySelector("#cohort-top-median"),
+  playerBenchmark: document.querySelector("#player-benchmark"),
+  p1Benchmark: document.querySelector("#p1-benchmark"),
+  fastestBenchmark: document.querySelector("#fastest-benchmark"),
+  focusZones: document.querySelector("#focus-zones"),
+  focusCount: document.querySelector("#focus-count"),
+  focusEmpty: document.querySelector("#focus-empty"),
+  segmentsBody: document.querySelector("#segments-body"),
+  segmentsCount: document.querySelector("#segments-count"),
+  segmentsEmpty: document.querySelector("#segments-empty"),
+  exclusionsList: document.querySelector("#exclusions-list"),
+  exclusionsEmpty: document.querySelector("#exclusions-empty"),
+  limitationsList: document.querySelector("#limitations-list"),
+  limitationsEmpty: document.querySelector("#limitations-empty"),
   lastUpdate: document.querySelector("#last-update"),
 };
 
@@ -63,6 +118,15 @@ elements.lapSelect.addEventListener("change", () => {
     return;
   }
   loadSavedLap(state.selectedLapId);
+});
+
+elements.liveTab.addEventListener("click", () => selectView("live"));
+elements.analysisTab.addEventListener("click", () => selectView("analysis"));
+elements.pauseButton.addEventListener("click", () => requestControl("pause"));
+elements.resumeButton.addEventListener("click", () => requestControl("resume"));
+elements.shutdownButton.addEventListener("click", () => {
+  if (!window.confirm("수집을 종료하고 대기 중인 텔레메트리를 모두 저장할까요?")) return;
+  requestControl("shutdown");
 });
 
 window.addEventListener("resize", () => renderTrace(state.displayedTrace, state.selectedLapId === "live"));
@@ -106,6 +170,73 @@ async function getJson(path) {
   }
 }
 
+async function postControl(action) {
+  const controller = new AbortController();
+  const timeout = window.setTimeout(() => controller.abort(), 5000);
+  try {
+    const response = await fetch(`/api/control/${encodeURIComponent(action)}`, {
+      method: "POST",
+      cache: "no-store",
+      headers: {
+        Accept: "application/json",
+        "X-LMU-Dashboard-Control": "1",
+      },
+      signal: controller.signal,
+    });
+    if (!response.ok) throw new Error(`${response.status} ${response.statusText}`);
+    const contentType = response.headers.get("content-type") || "";
+    return contentType.includes("application/json") ? await response.json() : await response.text();
+  } finally {
+    window.clearTimeout(timeout);
+  }
+}
+
+function selectView(view) {
+  state.activeView = view === "analysis" ? "analysis" : "live";
+  const analysisSelected = state.activeView === "analysis";
+  elements.liveTab.classList.toggle("is-active", !analysisSelected);
+  elements.analysisTab.classList.toggle("is-active", analysisSelected);
+  elements.liveTab.setAttribute("aria-selected", String(!analysisSelected));
+  elements.analysisTab.setAttribute("aria-selected", String(analysisSelected));
+  elements.liveView.hidden = analysisSelected;
+  elements.analysisView.hidden = !analysisSelected;
+}
+
+async function requestControl(action) {
+  if (state.controlBusy || state.shutdownRequested) return;
+  state.controlBusy = true;
+  renderControlButtons(pick(state.live, ["capture"], {}));
+  setControlFeedback(
+    action === "pause" ? "수집을 일시정지하는 중입니다…" : action === "resume" ? "수집을 재개하는 중입니다…" : "저장 후 종료하는 중입니다…",
+    false,
+  );
+  try {
+    const result = await postControl(action);
+    const serverMessage = typeof result === "object" && result ? pick(result, ["message"], "") : "";
+    if (action === "shutdown") state.shutdownRequested = true;
+    setControlFeedback(
+      serverMessage ||
+        (action === "pause"
+          ? "수집을 일시정지했습니다."
+          : action === "resume"
+            ? "수집을 재개했습니다."
+            : "대기 중인 데이터를 저장하고 대시보드를 종료합니다."),
+      false,
+    );
+  } catch (error) {
+    setControlFeedback(`제어 요청 실패: ${error instanceof Error ? error.message : String(error)}`, true);
+  } finally {
+    state.controlBusy = false;
+    renderControlButtons(pick(state.live, ["capture"], {}));
+  }
+}
+
+function setControlFeedback(message, error) {
+  elements.controlFeedback.hidden = !message;
+  elements.controlFeedback.classList.toggle("is-error", error);
+  setText(elements.controlFeedback, message);
+}
+
 async function pollLive() {
   try {
     const live = await getJson("/api/live");
@@ -140,6 +271,22 @@ async function pollTraceAndLaps() {
   window.setTimeout(pollTraceAndLaps, TRACE_POLL_MS);
 }
 
+async function pollAnalysis() {
+  try {
+    state.analysis = await getJson("/api/analysis");
+    renderAnalysis(state.analysis);
+  } catch (error) {
+    if (!state.analysis) {
+      renderAnalysis({
+        status: "unavailable",
+        message: `분석 데이터를 불러오지 못했습니다: ${error instanceof Error ? error.message : String(error)}`,
+      });
+    }
+  } finally {
+    window.setTimeout(pollAnalysis, ANALYSIS_POLL_MS);
+  }
+}
+
 async function loadSavedLap(id) {
   elements.traceDetail.textContent = "저장 랩 불러오는 중";
   try {
@@ -168,6 +315,7 @@ function renderLive(live) {
   renderTrack(trackPoints, vehicles, pick(live, ["player"], null));
   renderLeaderboard(vehicles, pick(live, ["player"], null));
   renderContacts(contacts);
+  renderCapture(pick(live, ["capture"], {}));
 
   elements.lastUpdate.textContent = `마지막 업데이트 ${new Intl.DateTimeFormat("ko-KR", {
     hour: "2-digit",
@@ -186,6 +334,81 @@ function renderConnection(connected, source, warning = "") {
   const warningText = warning ? String(warning) : "";
   elements.warningBanner.hidden = !warningText;
   setText(elements.warningText, warningText);
+}
+
+function renderCapture(capture) {
+  const captureState = String(pick(capture, ["state"], "waiting"));
+  const operatorPaused = Boolean(pick(capture, ["operator_paused"], false));
+  const paused = Boolean(pick(capture, ["paused"], false)) || captureState.toLowerCase().startsWith("paused");
+  const persistence = pick(capture, ["persistence"], {});
+  const sampleRate = finiteNumber(pick(capture, ["sample_rate_hz"], 0), 0);
+  const accepted = finiteNumber(pick(capture, ["accepted_frames"], 0), 0);
+  const rejected = finiteNumber(pick(capture, ["rejected_frames"], 0), 0);
+  const invalidSession = finiteNumber(pick(capture, ["invalid_session_frames"], 0), 0);
+  const duplicates = finiteNumber(pick(capture, ["duplicate_frames"], 0), 0);
+  const stalled = finiteNumber(pick(capture, ["stalled_frames"], 0), 0);
+  const inconsistent = finiteNumber(pick(capture, ["inconsistent_frames"], 0), 0);
+  const telemetryAccepted = finiteNumber(pick(capture, ["telemetry_accepted_samples"], 0), 0);
+  const telemetryRejected = finiteNumber(pick(capture, ["telemetry_rejected_samples"], 0), 0);
+  const telemetryDuplicates = finiteNumber(pick(capture, ["telemetry_duplicate_samples"], 0), 0);
+  const telemetryBackward = finiteNumber(pick(capture, ["telemetry_backward_samples"], 0), 0);
+  const telemetryDelayed = finiteNumber(pick(capture, ["telemetry_delayed_samples"], 0), 0);
+  const telemetrySudden = finiteNumber(pick(capture, ["telemetry_sudden_change_samples"], 0), 0);
+  const age = finiteNumber(pick(capture, ["last_frame_age_ms"]));
+  const queued = finiteNumber(pick(persistence, ["queued"], 0), 0);
+  const pending = finiteNumber(pick(persistence, ["pending"], 0), 0);
+  const written = finiteNumber(pick(persistence, ["written"], 0), 0);
+  const failed = finiteNumber(pick(persistence, ["failed"], 0), 0);
+  const persistenceError = pick(persistence, ["last_error"], "");
+  const quality = pick(capture, ["current_quality"], {});
+  const qualityStatus = String(pick(quality, ["status"], "unknown"));
+  const reasons = asArray(pick(quality, ["reasons"], []));
+
+  setText(elements.captureState, captureStateLabel(captureState, paused));
+  setText(elements.captureRate, `${sampleRate.toFixed(1)} Hz`);
+  setText(elements.captureAccepted, formatInteger(accepted));
+  setText(elements.captureRejected, formatInteger(rejected));
+  setText(elements.captureDuplicates, formatInteger(duplicates));
+  setText(elements.captureStalled, formatInteger(stalled));
+  setText(elements.captureInconsistent, formatInteger(inconsistent));
+  setText(elements.captureInvalidSessions, formatInteger(invalidSession));
+  setText(elements.captureTelemetryAccepted, formatInteger(telemetryAccepted));
+  setText(elements.captureTelemetryRejected, formatInteger(telemetryRejected));
+  setText(elements.captureTelemetryDuplicates, formatInteger(telemetryDuplicates));
+  setText(elements.captureTelemetryBackward, formatInteger(telemetryBackward));
+  setText(elements.captureTelemetryDelayed, formatInteger(telemetryDelayed));
+  setText(elements.captureTelemetrySudden, formatInteger(telemetrySudden));
+  setText(elements.captureAge, age == null ? "—" : formatAge(age));
+  setText(elements.persistencePending, `${formatInteger(queued)} / ${formatInteger(pending)}`);
+  setText(elements.persistenceResult, `${formatInteger(written)} / ${formatInteger(failed)}`);
+
+  const notes = [];
+  if (operatorPaused) {
+    notes.push("사용자 요청으로 수집이 일시정지되었습니다.");
+  } else if (paused) {
+    notes.push("게임 세션 시간이 멈춰 있어 새 텔레메트리를 기다리고 있습니다.");
+  }
+  if (pick(capture, ["session_resumed"], false)) notes.push("이전 실행의 동일 세션을 이어서 수집 중입니다.");
+  if (qualityStatus !== "valid" && qualityStatus !== "unknown") {
+    notes.push(`현재 랩 품질: ${qualityStatus.toUpperCase()}${reasons.length ? ` · ${reasons.join(", ")}` : ""}`);
+  }
+  if (persistenceError) notes.push(`저장 오류: ${persistenceError}`);
+  if (notes.length === 0) notes.push("수집 프레임과 비동기 저장 큐가 정상적으로 갱신되고 있습니다.");
+  setText(elements.captureNote, notes.join(" "));
+
+  elements.captureStrip.classList.toggle("is-paused", paused);
+  elements.captureStrip.classList.toggle("is-error", failed > 0 || Boolean(persistenceError));
+  elements.captureState.classList.toggle("is-paused", paused);
+  elements.captureState.classList.toggle("is-error", failed > 0 || Boolean(persistenceError));
+  renderControlButtons(capture);
+}
+
+function renderControlButtons(capture) {
+  const paused = Boolean(pick(capture, ["operator_paused"], false));
+  const locked = state.controlBusy || state.shutdownRequested;
+  elements.pauseButton.disabled = locked || paused;
+  elements.resumeButton.disabled = locked || !paused;
+  elements.shutdownButton.disabled = locked;
 }
 
 function renderSession(session, vehicles, currentLap) {
@@ -492,6 +715,213 @@ function renderContacts(contacts) {
   elements.contactsList.replaceChildren(fragment);
 }
 
+function renderAnalysis(report) {
+  const status = String(pick(report, ["status"], "waiting"));
+  const cohort = pick(report, ["cohort"], {});
+  const generatedAt = finiteNumber(pick(report, ["generated_at_unix_ms"]));
+  const focusZones = asArray(pick(report, ["focus_zones"], []));
+  const segments = asArray(pick(report, ["segments"], []));
+  const exclusions = asArray(pick(report, ["exclusions"], []));
+  const limitations = asArray(pick(report, ["limitations"], []));
+
+  setText(elements.analysisStatus, analysisStatusLabel(status));
+  setText(elements.analysisMessage, pick(report, ["message"], "분석 데이터를 기다리고 있습니다."));
+  setText(
+    elements.analysisGenerated,
+    generatedAt && generatedAt > 0
+      ? `생성 ${new Intl.DateTimeFormat("ko-KR", {
+          month: "2-digit",
+          day: "2-digit",
+          hour: "2-digit",
+          minute: "2-digit",
+          second: "2-digit",
+        }).format(new Date(generatedAt))}`
+      : "아직 생성되지 않음",
+  );
+  setText(elements.analysisTrack, pick(report, ["track_name"], "—") || "—");
+  setText(elements.analysisSession, pick(report, ["session_type"], "—") || "—");
+  setText(elements.analysisClass, pick(report, ["class_name"], "—") || "—");
+  elements.analysisStatus.classList.toggle("is-ready", status === "ready");
+  elements.analysisStatus.classList.toggle("is-warning", status !== "ready" && status !== "unavailable");
+  elements.analysisStatus.classList.toggle("is-error", status === "unavailable" || status === "error");
+
+  setText(elements.cohortParticipants, formatInteger(pick(cohort, ["participant_count"], 0)));
+  setText(elements.cohortValidLaps, formatInteger(pick(cohort, ["valid_lap_count"], 0)));
+  setText(elements.cohortTopCount, formatInteger(pick(cohort, ["top_quartile_count"], 0)));
+  const topMedian = finiteNumber(pick(cohort, ["top_quartile_median_ms"]));
+  setText(elements.cohortTopMedian, topMedian == null ? "중앙값 —" : `중앙값 ${formatLapTime(topMedian)}`);
+
+  renderBenchmark(elements.playerBenchmark, pick(report, ["player"], null), "내 유효 기록을 기다리고 있습니다.");
+  renderBenchmark(elements.p1Benchmark, pick(report, ["actual_p1"], null), "실제 클래스 P1 텔레메트리가 없습니다.");
+  renderBenchmark(elements.fastestBenchmark, pick(report, ["fastest_captured"], null), "수집된 유효 기록이 없습니다.");
+  renderFocusZones(focusZones);
+  renderSegments(segments);
+  renderExclusions(exclusions);
+  renderLimitations(limitations);
+}
+
+function renderBenchmark(container, benchmark, emptyMessage) {
+  if (!benchmark || typeof benchmark !== "object") {
+    const empty = document.createElement("p");
+    empty.className = "benchmark-empty";
+    empty.textContent = emptyMessage;
+    container.replaceChildren(empty);
+    return;
+  }
+
+  const header = document.createElement("div");
+  header.className = "benchmark-driver";
+  const name = document.createElement("strong");
+  name.textContent = String(pick(benchmark, ["driver_name"], "Unknown"));
+  const rank = document.createElement("span");
+  const rankValue = finiteNumber(pick(benchmark, ["rank"]));
+  const percentile = finiteNumber(pick(benchmark, ["percentile"]));
+  rank.textContent = [rankValue == null ? null : `P${rankValue}`, percentile == null ? null : `백분위 ${formatPercentile(percentile)}`]
+    .filter(Boolean)
+    .join(" · ");
+  header.append(name, rank);
+
+  const times = document.createElement("dl");
+  times.className = "benchmark-times";
+  times.append(
+    definition("Best", formatLapTime(pick(benchmark, ["best_lap_ms"], null))),
+    definition("Best 2 중앙값", formatLapTime(pick(benchmark, ["best_two_median_ms"], null))),
+    definition(
+      "선택 / 유효 랩",
+      `${formatInteger(pick(benchmark, ["selected_lap_count"], 0))} / ${formatInteger(pick(benchmark, ["valid_lap_count"], 0))}`,
+    ),
+  );
+  container.replaceChildren(header, times);
+}
+
+function definition(term, description) {
+  const wrapper = document.createElement("div");
+  const dt = document.createElement("dt");
+  const dd = document.createElement("dd");
+  dt.textContent = term;
+  dd.textContent = description;
+  wrapper.append(dt, dd);
+  return wrapper;
+}
+
+function renderFocusZones(zones) {
+  setText(elements.focusCount, zones.length);
+  elements.focusEmpty.hidden = zones.length > 0;
+  const fragment = document.createDocumentFragment();
+  for (const zone of zones) {
+    const card = document.createElement("article");
+    card.className = "focus-card";
+
+    const rank = document.createElement("span");
+    rank.className = "focus-rank";
+    rank.textContent = String(pick(zone, ["rank"], "—"));
+    const main = document.createElement("div");
+    main.className = "focus-main";
+    const heading = document.createElement("div");
+    heading.className = "focus-heading";
+    const title = document.createElement("strong");
+    title.textContent = `구간 ${pick(zone, ["segment_number"], "—")}`;
+    const range = document.createElement("span");
+    range.textContent = formatDistanceRange(zone);
+    heading.append(title, range);
+    const tags = document.createElement("div");
+    tags.className = "analysis-tags";
+    tags.append(
+      analysisTag(patternLabel(pick(zone, ["pattern"], "unknown"))),
+      analysisTag(lossOriginLabel(pick(zone, ["loss_origin"], "unknown"))),
+      analysisTag(`신뢰도 ${confidenceLabel(pick(zone, ["confidence"], "unknown"))}`),
+    );
+    const cues = document.createElement("ul");
+    cues.className = "coaching-cues";
+    for (const cue of asArray(pick(zone, ["coaching_cues"], []))) {
+      const item = document.createElement("li");
+      item.textContent = String(cue);
+      cues.append(item);
+    }
+    main.append(heading, tags, cues);
+
+    const loss = document.createElement("strong");
+    loss.className = "focus-loss";
+    loss.textContent = formatLoss(pick(zone, ["loss_ms"], 0));
+    card.append(rank, main, loss);
+    fragment.append(card);
+  }
+  elements.focusZones.replaceChildren(fragment);
+}
+
+function renderSegments(segments) {
+  setText(elements.segmentsCount, segments.length);
+  elements.segmentsEmpty.hidden = segments.length > 0;
+  const fragment = document.createDocumentFragment();
+  for (const segment of segments) {
+    const row = document.createElement("tr");
+    const loss = finiteNumber(pick(segment, ["delta_to_actual_p1_ms"]));
+    if (loss > 0) row.classList.add("is-loss");
+    if (loss < 0) row.classList.add("is-gain");
+    row.append(
+      tableCell(`S${pick(segment, ["number"], "—")}`, "segment-number"),
+      tableCell(formatDistanceRange(segment), "segment-range"),
+      tableCell(formatSegmentTime(pick(segment, ["player_time_ms"], null)), "numeric"),
+      tableCell(formatSegmentTime(pick(segment, ["actual_p1_time_ms"], null)), "numeric"),
+      tableCell(loss == null ? "—" : formatLoss(loss), "numeric segment-loss"),
+      tableCell(
+        pick(segment, ["cumulative_delta_to_actual_p1_ms"], null) == null
+          ? "—"
+          : formatLoss(pick(segment, ["cumulative_delta_to_actual_p1_ms"], 0)),
+        "numeric",
+      ),
+      tableCell(
+        `${pick(segment, ["rank"], "—")} / ${pick(segment, ["participant_count"], "—")} · ${formatPercentile(finiteNumber(pick(segment, ["percentile"]), 0))}`,
+        "numeric",
+      ),
+      tableCell(`${patternLabel(pick(segment, ["pattern"], "unknown"))} · ${lossOriginLabel(pick(segment, ["loss_origin"], "unknown"))}`),
+      tableCell(
+        `${confidenceLabel(pick(segment, ["confidence"], "unknown"))} · n=${formatInteger(pick(segment, ["lap_sample_count"], 0))}`,
+        "confidence-cell",
+      ),
+    );
+    fragment.append(row);
+  }
+  elements.segmentsBody.replaceChildren(fragment);
+}
+
+function renderExclusions(exclusions) {
+  elements.exclusionsEmpty.hidden = exclusions.length > 0;
+  const fragment = document.createDocumentFragment();
+  for (const exclusion of exclusions) {
+    const row = document.createElement("article");
+    row.className = "quality-row";
+    const copy = document.createElement("div");
+    const code = document.createElement("strong");
+    code.textContent = String(pick(exclusion, ["code"], "unknown"));
+    const description = document.createElement("p");
+    description.textContent = String(pick(exclusion, ["description"], "제외 사유 정보 없음"));
+    copy.append(code, description);
+    const count = document.createElement("span");
+    count.textContent = `${formatInteger(pick(exclusion, ["count"], 0))}건`;
+    row.append(copy, count);
+    fragment.append(row);
+  }
+  elements.exclusionsList.replaceChildren(fragment);
+}
+
+function renderLimitations(limitations) {
+  elements.limitationsEmpty.hidden = limitations.length > 0;
+  const fragment = document.createDocumentFragment();
+  for (const limitation of limitations) {
+    const item = document.createElement("li");
+    item.textContent = String(limitation);
+    fragment.append(item);
+  }
+  elements.limitationsList.replaceChildren(fragment);
+}
+
+function analysisTag(label) {
+  const tag = document.createElement("span");
+  tag.textContent = label;
+  return tag;
+}
+
 function renderLapOptions() {
   const selected = state.selectedLapId;
   const optionsKey = state.savedLaps
@@ -796,6 +1226,97 @@ function formatSessionPhase(value) {
   return String(value);
 }
 
+function captureStateLabel(value, paused) {
+  if (paused) return "일시정지";
+  const labels = {
+    active: "수집 중",
+    capturing: "수집 중",
+    connected: "연결됨",
+    disconnected: "연결 대기",
+    waiting: "대기",
+    stalled: "데이터 정체",
+    error: "오류",
+  };
+  const key = String(value).toLowerCase();
+  return labels[key] || String(value || "대기").toUpperCase();
+}
+
+function analysisStatusLabel(status) {
+  const labels = {
+    ready: "READY",
+    waiting_for_session: "세션 대기",
+    waiting_for_qualifying_session: "퀄리파잉 대기",
+    waiting_for_player_lap: "내 랩 대기",
+    waiting_for_valid_laps: "유효 랩 대기",
+    waiting_for_valid_player_trace: "내 유효 트레이스 대기",
+    waiting_for_actual_p1_trace: "P1 트레이스 대기",
+    unavailable: "UNAVAILABLE",
+    error: "ERROR",
+  };
+  return labels[status] || String(status || "WAITING").replaceAll("_", " ").toUpperCase();
+}
+
+function patternLabel(value) {
+  const labels = {
+    recurring: "반복 습관",
+    one_off: "일회성",
+    isolated: "일회성",
+    none: "뚜렷한 반복 없음",
+    unknown: "판정 대기",
+  };
+  return labels[String(value)] || String(value).replaceAll("_", " ");
+}
+
+function lossOriginLabel(value) {
+  const labels = {
+    carry: "이전 구간 영향",
+    intrinsic: "구간 자체 손실",
+    mixed: "복합 손실",
+    none: "손실 없음",
+    unknown: "원인 대기",
+  };
+  return labels[String(value)] || String(value).replaceAll("_", " ");
+}
+
+function confidenceLabel(value) {
+  const labels = { high: "높음", medium: "보통", low: "낮음", unknown: "판정 대기" };
+  return labels[String(value)] || String(value).toUpperCase();
+}
+
+function formatAge(milliseconds) {
+  const value = Math.max(0, milliseconds);
+  if (value < 1000) return `${Math.round(value)} ms`;
+  if (value < 60000) return `${(value / 1000).toFixed(1)} s`;
+  return `${Math.floor(value / 60000)}m ${Math.floor((value % 60000) / 1000)}s`;
+}
+
+function formatInteger(value) {
+  const number = finiteNumber(value, 0);
+  return new Intl.NumberFormat("ko-KR", { maximumFractionDigits: 0 }).format(number);
+}
+
+function formatPercentile(value) {
+  return `${Math.max(0, Math.min(100, value)).toFixed(1)}%`;
+}
+
+function formatDistanceRange(value) {
+  const start = finiteNumber(pick(value, ["start_m"]));
+  const end = finiteNumber(pick(value, ["end_m"]));
+  return start == null || end == null ? "거리 —" : `${Math.round(start)}–${Math.round(end)} m`;
+}
+
+function formatSegmentTime(value) {
+  const milliseconds = finiteNumber(value);
+  return milliseconds == null ? "—" : `${(milliseconds / 1000).toFixed(3)} s`;
+}
+
+function formatLoss(value) {
+  const milliseconds = finiteNumber(value);
+  if (milliseconds == null) return "—";
+  const sign = milliseconds > 0 ? "+" : milliseconds < 0 ? "−" : "±";
+  return `${sign}${(Math.abs(milliseconds) / 1000).toFixed(3)} s`;
+}
+
 function formatTemperature(value) {
   return value == null ? "—" : `${Math.round(value)}°C`;
 }
@@ -881,5 +1402,8 @@ function formatCompactNumber(value) {
 
 renderConnection(false, "연결 대기");
 renderTrace(null, true);
+renderCapture({});
+renderAnalysis({ status: "waiting_for_session", message: "LMU 세션 분석을 기다리고 있습니다." });
 pollLive();
 pollTraceAndLaps();
+pollAnalysis();

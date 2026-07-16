@@ -10,13 +10,16 @@ mod hud;
 mod logging;
 #[cfg(any(target_os = "macos", target_os = "windows"))]
 mod native_hud;
+mod runtime_control;
 mod telemetry;
-mod telemetry_quality;
 mod udp;
 
 use games::ProtocolKind;
 #[cfg(any(target_os = "macos", target_os = "windows"))]
 use hud::HudHandle;
+#[cfg(any(windows, test))]
+use sim_moza_bridge::shared_memory;
+use sim_moza_bridge::{telemetry_core, telemetry_quality};
 
 fn main() {
     let config = match config::read_config() {
@@ -30,6 +33,12 @@ fn main() {
             std::process::exit(1);
         }
     };
+
+    runtime_control::reset();
+    if let Err(error) = runtime_control::install_ctrl_c_handler() {
+        eprintln!("[startup-error] {error}");
+        std::process::exit(1);
+    }
 
     let result = start(config);
 

@@ -3,11 +3,11 @@ use crate::model::{
     VehicleTelemetry,
 };
 use crate::store::unix_ms;
-use crate::telemetry_quality::{QualitySample, TraceQualityStatus, assess_trace};
+use crate::telemetry_quality::{QualityReason, QualitySample, TraceQualityStatus, assess_trace};
 
 const MIN_SAMPLES_TO_SAVE: usize = 20;
 
-#[derive(Default)]
+#[derive(Clone, Default)]
 pub struct LapTracker {
     session_id: String,
     track_name: String,
@@ -24,6 +24,7 @@ pub struct LapTracker {
     overall_position: u8,
     class_position: u8,
     last_lap_time_s: Option<f64>,
+    capture_rejections: u32,
 }
 
 impl LapTracker {
@@ -49,6 +50,7 @@ impl LapTracker {
         self.overall_position = 0;
         self.class_position = 0;
         self.last_lap_time_s = None;
+        self.capture_rejections = 0;
     }
 
     pub fn ingest(
@@ -85,6 +87,55 @@ impl LapTracker {
         completed
     }
 
+    pub fn restore_partial(&mut self, lap: SavedLap) -> bool {
+        if lap.summary.completed || lap.summary.lap_number <= 0 || lap.samples.is_empty() {
+            return false;
+        }
+        self.session_id.clone_from(&lap.summary.session_id);
+        self.track_name.clone_from(&lap.summary.track_name);
+        self.session_type.clone_from(&lap.summary.session_type);
+        self.track_length_m = lap.summary.track_length_m;
+        self.current_lap_number = Some(lap.summary.lap_number);
+        self.last_session_time_s = lap
+            .samples
+            .last()
+            .map_or(0.0, |sample| sample.session_time_s);
+        self.current_samples = lap.samples;
+        self.invalid = lap
+            .summary
+            .quality
+            .reasons
+            .contains(&QualityReason::GameInvalidated);
+        self.capture_rejections = u32::from(
+            lap.summary
+                .quality
+                .reasons
+                .contains(&QualityReason::SampleGap),
+        );
+        self.vehicle_id = lap.summary.vehicle_id;
+        self.driver_name = lap.summary.driver_name;
+        self.class_name = lap.summary.class_name;
+        self.is_player = lap.summary.is_player;
+        self.overall_position = lap.summary.overall_position;
+        self.class_position = lap.summary.class_position;
+        true
+    }
+
+    pub fn finish_partial(&mut self) -> Option<SavedLap> {
+        self.finish_lap(false)
+    }
+
+    pub fn snapshot_partial(&self) -> Option<SavedLap> {
+        let mut snapshot = self.clone();
+        snapshot.finish_lap(false)
+    }
+
+    pub fn note_capture_rejection(&mut self, lap_number: i32) {
+        if self.current_lap_number == Some(lap_number) {
+            self.capture_rejections = self.capture_rejections.saturating_add(1);
+        }
+    }
+
     pub fn current_info(&self) -> Option<CurrentLapInfo> {
         let quality = self.assess(None, false);
         Some(CurrentLapInfo {
@@ -106,6 +157,7 @@ impl LapTracker {
             session_id: self.session_id.clone(),
             track_name: self.track_name.clone(),
             session_type: self.session_type.clone(),
+            track_length_m: self.track_length_m,
             vehicle_id: self.vehicle_id,
             driver_name: self.driver_name.clone(),
             class_name: self.class_name.clone(),
@@ -134,6 +186,7 @@ impl LapTracker {
         self.current_samples.clear();
         self.invalid = false;
         self.last_session_time_s = 0.0;
+        self.capture_rejections = 0;
     }
 
     fn update_vehicle(&mut self, vehicle: &VehicleState, class_position: u8) {
@@ -169,6 +222,7 @@ impl LapTracker {
             session_id: self.session_id.clone(),
             track_name: self.track_name.clone(),
             session_type: self.session_type.clone(),
+            track_length_m: self.track_length_m,
             vehicle_id: self.vehicle_id,
             driver_name: self.driver_name.clone(),
             class_name: self.class_name.clone(),
@@ -208,13 +262,28 @@ impl LapTracker {
                 longitudinal_g: sample.longitudinal_g,
             })
             .collect::<Vec<_>>();
-        assess_trace(
+        let mut quality = assess_trace(
             &samples,
             self.track_length_m,
             official_lap_ms,
             self.invalid,
             completed,
-        )
+        );
+        if self.capture_rejections > 0 {
+            if !quality.reasons.contains(&QualityReason::SampleGap) {
+                quality.reasons.push(QualityReason::SampleGap);
+            }
+            quality.dropped_samples = quality
+                .dropped_samples
+                .saturating_add(self.capture_rejections);
+            quality.score = quality
+                .score
+                .saturating_sub(self.capture_rejections.min(20) as u8);
+            if quality.status != TraceQualityStatus::Rejected {
+                quality.status = TraceQualityStatus::Partial;
+            }
+        }
+        quality
     }
 }
 

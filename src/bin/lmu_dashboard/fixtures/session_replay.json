@@ -1,0 +1,102 @@
+{
+  "schema_version": 1,
+  "track_name": "실버스톤 테스트",
+  "session_type": "Race",
+  "track_length_m": 1000.0,
+  "participants": [
+    {
+      "id": 7,
+      "driver_name": "익명 플레이어",
+      "class_name": "Hypercar",
+      "position": 2,
+      "is_player": true,
+      "last_lap_time_s": 10.0
+    },
+    {
+      "id": 8,
+      "driver_name": "익명 기준차",
+      "class_name": "Hypercar",
+      "position": 1,
+      "is_player": false,
+      "last_lap_time_s": 9.8
+    },
+    {
+      "id": 21,
+      "driver_name": "익명 GT",
+      "class_name": "LMGT3",
+      "position": 3,
+      "is_player": false,
+      "last_lap_time_s": 11.2
+    }
+  ],
+  "events": [
+    {
+      "kind": "samples",
+      "label": "mid_lap_capture",
+      "lap_number": 3,
+      "count": 25,
+      "session_time_start_s": 100.0,
+      "lap_elapsed_start_s": 20.0,
+      "lap_distance_start_m": 300.0,
+      "time_step_s": 0.05,
+      "distance_step_m": 20.0
+    },
+    { "kind": "restart", "label": "same_session_process_restart" },
+    {
+      "kind": "samples",
+      "label": "resume_same_logical_lap",
+      "lap_number": 3,
+      "count": 11,
+      "session_time_start_s": 101.25,
+      "lap_elapsed_start_s": 21.25,
+      "lap_distance_start_m": 800.0,
+      "time_step_s": 0.05,
+      "distance_step_m": 20.0
+    },
+    {
+      "kind": "samples",
+      "label": "complete_mid_lap_trace",
+      "lap_number": 4,
+      "count": 1,
+      "session_time_start_s": 101.85,
+      "lap_elapsed_start_s": 0.0,
+      "lap_distance_start_m": 0.0,
+      "time_step_s": 0.05,
+      "distance_step_m": 0.0
+    },
+    {
+      "kind": "samples",
+      "label": "normal_complete_lap",
+      "lap_number": 4,
+      "count": 50,
+      "session_time_start_s": 102.05,
+      "lap_elapsed_start_s": 0.2,
+      "lap_distance_start_m": 20.0,
+      "time_step_s": 0.2,
+      "distance_step_m": 20.0
+    },
+    {
+      "kind": "samples",
+      "label": "second_lap_transition",
+      "lap_number": 5,
+      "count": 1,
+      "session_time_start_s": 112.0,
+      "lap_elapsed_start_s": 0.0,
+      "lap_distance_start_m": 0.0,
+      "time_step_s": 0.05,
+      "distance_step_m": 0.0
+    },
+    { "kind": "empty", "label": "menu_empty_frame" },
+    {
+      "kind": "samples",
+      "label": "session_time_reset",
+      "lap_number": 1,
+      "count": 1,
+      "session_time_start_s": 1.0,
+      "lap_elapsed_start_s": 0.1,
+      "lap_distance_start_m": 10.0,
+      "time_step_s": 0.05,
+      "distance_step_m": 0.0
+    }
+  ]
+}
