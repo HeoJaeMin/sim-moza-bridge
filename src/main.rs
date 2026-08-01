@@ -10,6 +10,8 @@ mod hud;
 mod logging;
 #[cfg(any(target_os = "macos", target_os = "windows"))]
 mod native_hud;
+mod race_engineer;
+mod runtime_control;
 mod telemetry;
 mod udp;
 
@@ -64,14 +66,19 @@ fn start_runtime(config: config::BridgeConfig) -> Result<(), String> {
 pub(crate) fn start_runtime_with_hud(
     config: config::BridgeConfig,
     hud: Option<HudHandle>,
+    shutdown: runtime_control::ShutdownToken,
 ) -> Result<(), String> {
     match config.game.protocol {
-        ProtocolKind::Auto => auto_runtime::start_auto_runtime_with_hud(config, hud),
+        ProtocolKind::Auto => auto_runtime::start_auto_runtime_with_hud(config, hud, shutdown),
         ProtocolKind::F1_25 | ProtocolKind::OpaqueUdp => {
-            udp::start_udp_bridge_with_hud(config, hud)
+            udp::start_udp_bridge_with_hud(config, hud, shutdown)
         }
-        ProtocolKind::AssettoCorsaEvo => adapters::ace::start_ace_adapter_with_hud(config, hud),
-        ProtocolKind::LeMansUltimate => adapters::lmu::start_lmu_adapter_with_hud(config, hud),
+        ProtocolKind::AssettoCorsaEvo => {
+            adapters::ace::start_ace_adapter_with_hud(config, hud, shutdown)
+        }
+        ProtocolKind::LeMansUltimate => {
+            adapters::lmu::start_lmu_adapter_with_hud(config, hud, shutdown)
+        }
         ProtocolKind::AssettoCorsaRally => {
             Err("Assetto Corsa Rally adapter is not implemented yet".to_owned())
         }

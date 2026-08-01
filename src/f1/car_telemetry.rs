@@ -1,18 +1,29 @@
-use super::constants::{MAX_CARS, PACKET_HEADER_SIZE};
+use super::constants::{
+    F1_25_2026_SEASON_PACKET_FORMAT, MAX_CARS, PACKET_HEADER_SIZE, max_cars_for_format,
+};
 use super::header::parse_packet_header;
 use crate::telemetry::{InputSample, WheelValuesF32, WheelValuesU8, WheelValuesU16};
 
 pub const CAR_TELEMETRY_DATA_SIZE: usize = 60;
+pub const CAR_TELEMETRY_DATA_SIZE_2026: usize = 59;
 pub const CAR_TELEMETRY_PACKET_EXTRA_SIZE: usize = 3;
 pub const CAR_TELEMETRY_PACKET_SIZE: usize =
     PACKET_HEADER_SIZE + MAX_CARS * CAR_TELEMETRY_DATA_SIZE + CAR_TELEMETRY_PACKET_EXTRA_SIZE;
 
 pub fn car_telemetry_offset(car_index: usize) -> Result<usize, String> {
-    if car_index >= MAX_CARS {
-        return Err(format!("car_index must be between 0 and {}", MAX_CARS - 1));
+    car_telemetry_offset_for(car_index, MAX_CARS, CAR_TELEMETRY_DATA_SIZE)
+}
+
+fn car_telemetry_offset_for(
+    car_index: usize,
+    max_cars: usize,
+    data_size: usize,
+) -> Result<usize, String> {
+    if car_index >= max_cars {
+        return Err(format!("car_index must be between 0 and {}", max_cars - 1));
     }
 
-    Ok(PACKET_HEADER_SIZE + car_index * CAR_TELEMETRY_DATA_SIZE)
+    Ok(PACKET_HEADER_SIZE + car_index * data_size)
 }
 
 fn read_u16_le(packet: &[u8], offset: usize) -> u16 {
@@ -65,12 +76,26 @@ fn read_f32_wheels(packet: &[u8], offset: usize) -> WheelValuesF32 {
 pub fn parse_player_input_sample(packet: &[u8]) -> Result<InputSample, String> {
     let header = parse_packet_header(packet)
         .ok_or_else(|| "packet is too short for F1 header".to_owned())?;
+    let max_cars = max_cars_for_format(header.packet_format)
+        .ok_or_else(|| format!("unsupported F1 packet format {}", header.packet_format))?;
+    let data_size = if header.packet_format == F1_25_2026_SEASON_PACKET_FORMAT {
+        CAR_TELEMETRY_DATA_SIZE_2026
+    } else {
+        CAR_TELEMETRY_DATA_SIZE
+    };
     let car_index = header.player_car_index as usize;
-    let base = car_telemetry_offset(car_index)?;
+    let base = car_telemetry_offset_for(car_index, max_cars, data_size)?;
+    let packet_size = PACKET_HEADER_SIZE + max_cars * data_size + CAR_TELEMETRY_PACKET_EXTRA_SIZE;
 
-    if packet.len() < base + CAR_TELEMETRY_DATA_SIZE || packet.len() < CAR_TELEMETRY_PACKET_SIZE {
+    if packet.len() < base + data_size || packet.len() < packet_size {
         return Err("packet is too short for F1 car telemetry data".to_owned());
     }
+    let (engine_temp_c, tyre_pressure_offset) =
+        if header.packet_format == F1_25_2026_SEASON_PACKET_FORMAT {
+            (packet[base + 38] as u16, base + 39)
+        } else {
+            (read_u16_le(packet, base + 38), base + 40)
+        };
 
     Ok(InputSample {
         session_time: header.session_time,
@@ -89,15 +114,17 @@ pub fn parse_player_input_sample(packet: &[u8]) -> Result<InputSample, String> {
         brake_temps_c: read_u16_wheels(packet, base + 22),
         tyre_surface_temps_c: read_u8_wheels(packet, base + 30),
         tyre_inner_temps_c: read_u8_wheels(packet, base + 34),
-        engine_temp_c: read_u16_le(packet, base + 38),
-        tyre_pressures_psi: read_f32_wheels(packet, base + 40),
+        engine_temp_c,
+        tyre_pressures_psi: read_f32_wheels(packet, tyre_pressure_offset),
     })
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::f1::constants::{F1_25_PACKET_FORMAT, packet_id};
+    use crate::f1::constants::{
+        F1_25_2026_SEASON_PACKET_FORMAT, F1_25_PACKET_FORMAT, MAX_CARS_2026, packet_id,
+    };
 
     #[test]
     fn parses_player_input_sample() {
@@ -187,5 +214,36 @@ mod tests {
         let packet = vec![0_u8; CAR_TELEMETRY_PACKET_SIZE - 1];
 
         assert!(parse_player_input_sample(&packet).is_err());
+    }
+
+    #[test]
+    fn parses_2026_season_car_telemetry_layout() {
+        let packet_size = PACKET_HEADER_SIZE
+            + MAX_CARS_2026 * CAR_TELEMETRY_DATA_SIZE_2026
+            + CAR_TELEMETRY_PACKET_EXTRA_SIZE;
+        let mut packet = vec![0_u8; packet_size];
+        packet[0..2].copy_from_slice(&F1_25_2026_SEASON_PACKET_FORMAT.to_le_bytes());
+        packet[2] = 25;
+        packet[6] = packet_id::CAR_TELEMETRY;
+        packet[15..19].copy_from_slice(&25.0_f32.to_le_bytes());
+        packet[27] = 23;
+        let base =
+            car_telemetry_offset_for(23, MAX_CARS_2026, CAR_TELEMETRY_DATA_SIZE_2026).unwrap();
+        packet[base..base + 2].copy_from_slice(&321_u16.to_le_bytes());
+        packet[base + 2..base + 6].copy_from_slice(&0.95_f32.to_le_bytes());
+        packet[base + 15] = 8;
+        packet[base + 16..base + 18].copy_from_slice(&12_345_u16.to_le_bytes());
+        packet[base + 38] = 107;
+        packet[base + 39..base + 43].copy_from_slice(&21.1_f32.to_le_bytes());
+        packet[base + 43..base + 47].copy_from_slice(&21.2_f32.to_le_bytes());
+        packet[base + 47..base + 51].copy_from_slice(&22.1_f32.to_le_bytes());
+        packet[base + 51..base + 55].copy_from_slice(&22.2_f32.to_le_bytes());
+
+        let sample = parse_player_input_sample(&packet).unwrap();
+        assert_eq!(sample.player_car_index, 23);
+        assert_eq!(sample.speed_kmh, 321);
+        assert_eq!(sample.rpm, 12_345);
+        assert_eq!(sample.engine_temp_c, 107);
+        assert_eq!(sample.tyre_pressures_psi.fr, 22.2);
     }
 }

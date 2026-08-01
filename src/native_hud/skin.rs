@@ -838,6 +838,7 @@ mod tests {
         LapSample {
             session_time: 0.0,
             frame_identifier: 0,
+            overall_frame_identifier: None,
             player_car_index: 0,
             last_lap_time_ms: 0,
             current_lap_time_ms: 0,
@@ -846,13 +847,17 @@ mod tests {
             car_position: 1,
             current_lap_num: 1,
             pit_status: 0,
+            num_pit_stops: 0,
             sector: 0,
             current_lap_invalid: false,
             driver_status: 0,
             result_status: 0,
             delta_to_car_in_front_ms: None,
+            car_in_front_index: None,
             delta_to_car_behind_ms: None,
+            car_behind_index: None,
             delta_to_race_leader_ms: None,
+            safety_car_delta_s: None,
             sector1_time_ms: None,
             sector2_time_ms: None,
         }
@@ -862,6 +867,8 @@ mod tests {
         SessionSample {
             session_time: 0.0,
             frame_identifier: 0,
+            overall_frame_identifier: None,
+            weather: 0,
             total_laps: 30,
             track_length_m: 1000,
             session_type: 0,
@@ -869,6 +876,8 @@ mod tests {
             track_temp_c: 0,
             air_temp_c: 0,
             session_time_left_s: 0,
+            pit_speed_limit_kmh: 0,
+            safety_car_status: 0,
             marshal_zones: vec![
                 MarshalZoneSample {
                     start: 0.25,
@@ -883,6 +892,10 @@ mod tests {
                     flag: 4,
                 },
             ],
+            weather_forecast_samples: Vec::new(),
+            pit_stop_window_ideal_lap: None,
+            pit_stop_window_latest_lap: None,
+            pit_stop_rejoin_position: None,
         }
     }
 

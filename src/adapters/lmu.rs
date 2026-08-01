@@ -2,6 +2,7 @@
 
 use crate::config::BridgeConfig;
 use crate::hud::HudHandle;
+use crate::runtime_control::ShutdownToken;
 use crate::telemetry::{
     DamageSample, InputSample, LapSample, StatusSample, TelemetryUpdate, WheelValuesF32,
     WheelValuesU8, WheelValuesU16,
@@ -71,11 +72,13 @@ pub fn start_lmu_adapter(config: BridgeConfig) -> Result<(), String> {
 pub fn start_lmu_adapter_with_hud(
     config: BridgeConfig,
     hud: Option<HudHandle>,
+    shutdown: ShutdownToken,
 ) -> Result<(), String> {
     #[cfg(not(windows))]
     {
         let _ = config;
         let _ = hud;
+        let _ = shutdown;
         return Err(format!(
             "Le Mans Ultimate adapter requires Windows shared memory ({LMU_MAPPING_NAME}); run this on the game PC with LMU shared memory enabled"
         ));
@@ -90,6 +93,7 @@ pub fn start_lmu_adapter_with_hud(
             LMU_VIEW_SIZE,
             parse_lmu_update,
             hud,
+            shutdown,
         )
     }
 }
@@ -155,6 +159,7 @@ pub(crate) fn parse_lmu_update(
         lap: Some(LapSample {
             session_time,
             frame_identifier,
+            overall_frame_identifier: None,
             player_car_index: player_index as u8,
             last_lap_time_ms: 0,
             current_lap_time_ms,
@@ -163,13 +168,17 @@ pub(crate) fn parse_lmu_update(
             car_position: 0,
             current_lap_num: lap_number,
             pit_status: 0,
+            num_pit_stops: 0,
             sector: read_u8(snapshot, base + CURRENT_SECTOR_OFFSET)?,
             current_lap_invalid: false,
             driver_status: 0,
             result_status: 0,
             delta_to_car_in_front_ms: seconds_to_ms(first_valid_gap(snapshot, base, true)?),
+            car_in_front_index: None,
             delta_to_car_behind_ms: seconds_to_ms(first_valid_gap(snapshot, base, false)?),
+            car_behind_index: None,
             delta_to_race_leader_ms: None,
+            safety_car_delta_s: None,
             sector1_time_ms: None,
             sector2_time_ms: None,
         }),
@@ -187,6 +196,7 @@ pub(crate) fn parse_lmu_update(
             engine_damage: 0,
         }),
         status: Some(StatusSample {
+            packet_format: None,
             session_time,
             frame_identifier,
             player_car_index: player_index as u8,
@@ -195,7 +205,7 @@ pub(crate) fn parse_lmu_update(
             front_brake_bias: rear_bias_to_front_percent(rear_brake_bias),
             fuel_in_tank: fuel as f32,
             fuel_capacity: fuel_capacity as f32,
-            fuel_remaining_laps: 0.0,
+            fuel_delta_laps: None,
             max_rpm: clamp_u16(read_f64_le(snapshot, base + ENGINE_MAX_RPM_OFFSET)?),
             idle_rpm: 0,
             max_gears: read_u8(snapshot, base + MAX_GEARS_OFFSET)?,
@@ -207,6 +217,9 @@ pub(crate) fn parse_lmu_update(
             tyres_age_laps: 0,
             ers_store_energy: 0.0,
             ers_deploy_mode: 0,
+            ers_harvested_this_lap_mguk: 0.0,
+            ers_harvested_this_lap_mguh: 0.0,
+            ers_harvest_limit_per_lap: None,
             ers_deployed_this_lap: 0.0,
         }),
         ..TelemetryUpdate::default()

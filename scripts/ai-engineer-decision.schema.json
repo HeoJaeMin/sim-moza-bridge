@@ -1,0 +1,63 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "type": "object",
+  "additionalProperties": false,
+  "properties": {
+    "trigger_sequence": {
+      "type": "integer",
+      "minimum": 1
+    },
+    "session_uid": {
+      "type": "string"
+    },
+    "timeline_revision": {
+      "type": "integer",
+      "minimum": 0
+    },
+    "speak": {
+      "type": "boolean"
+    },
+    "priority": {
+      "type": "string",
+      "enum": ["normal", "important", "critical"]
+    },
+    "kind": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 48
+    },
+    "message": {
+      "type": "string",
+      "maxLength": 180
+    },
+    "valid_for_ms": {
+      "type": "integer",
+      "minimum": 20000,
+      "maximum": 30000
+    },
+    "basis": {
+      "type": "array",
+      "maxItems": 8,
+      "items": {
+        "type": "string",
+        "maxLength": 64
+      }
+    },
+    "reason": {
+      "type": "string",
+      "maxLength": 240
+    }
+  },
+  "required": [
+    "trigger_sequence",
+    "session_uid",
+    "timeline_revision",
+    "speak",
+    "priority",
+    "kind",
+    "message",
+    "valid_for_ms",
+    "basis",
+    "reason"
+  ]
+}

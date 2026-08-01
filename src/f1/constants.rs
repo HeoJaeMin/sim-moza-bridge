@@ -1,7 +1,17 @@
 pub const F1_25_PACKET_FORMAT: u16 = 2025;
+pub const F1_25_2026_SEASON_PACKET_FORMAT: u16 = 2026;
 pub const F1_24_PACKET_FORMAT: u16 = 2024;
 pub const PACKET_HEADER_SIZE: usize = 29;
 pub const MAX_CARS: usize = 22;
+pub const MAX_CARS_2026: usize = 24;
+
+pub fn max_cars_for_format(packet_format: u16) -> Option<usize> {
+    match packet_format {
+        F1_25_PACKET_FORMAT => Some(MAX_CARS),
+        F1_25_2026_SEASON_PACKET_FORMAT => Some(MAX_CARS_2026),
+        _ => None,
+    }
+}
 
 pub mod packet_id {
     pub const MOTION: u8 = 0;
@@ -20,6 +30,7 @@ pub mod packet_id {
     pub const MOTION_EX: u8 = 13;
     pub const TIME_TRIAL: u8 = 14;
     pub const LAP_POSITIONS: u8 = 15;
+    pub const CAR_TELEMETRY_2: u8 = 16;
 }
 
 pub fn packet_name(id: u8) -> String {
@@ -40,6 +51,7 @@ pub fn packet_name(id: u8) -> String {
         packet_id::MOTION_EX => "MotionEx",
         packet_id::TIME_TRIAL => "TimeTrial",
         packet_id::LAP_POSITIONS => "LapPositions",
+        packet_id::CAR_TELEMETRY_2 => "CarTelemetry2",
         _ => return id.to_string(),
     };
     name.to_owned()

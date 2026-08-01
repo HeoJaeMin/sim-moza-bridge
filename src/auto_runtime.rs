@@ -10,6 +10,7 @@ use crate::config::BridgeConfig;
 use crate::games::{ACE, F1_25, LMU};
 use crate::hud::HudHandle;
 use crate::logging::{TelemetryRecorder, print_enabled_outputs};
+use crate::runtime_control::{ShutdownToken, never_stop_token, shutdown_requested};
 use crate::telemetry::TelemetryUpdate;
 
 const UDP_BUFFER_SIZE: usize = 65_535;
@@ -28,17 +29,22 @@ enum RuntimeSource {
 
 #[cfg_attr(any(target_os = "macos", target_os = "windows"), allow(dead_code))]
 pub fn start_auto_runtime(config: BridgeConfig) -> Result<(), String> {
-    run_auto_runtime(config, None)
+    run_auto_runtime(config, None, never_stop_token())
 }
 
 pub fn start_auto_runtime_with_hud(
     config: BridgeConfig,
     hud: Option<HudHandle>,
+    shutdown: ShutdownToken,
 ) -> Result<(), String> {
-    run_auto_runtime(config, hud)
+    run_auto_runtime(config, hud, shutdown)
 }
 
-fn run_auto_runtime(config: BridgeConfig, hud: Option<HudHandle>) -> Result<(), String> {
+fn run_auto_runtime(
+    config: BridgeConfig,
+    hud: Option<HudHandle>,
+    shutdown: ShutdownToken,
+) -> Result<(), String> {
     let receiver = UdpSocket::bind(format!("{}:{}", config.listen_host, config.listen_port))
         .map_err(|error| format!("bind failed: {error}"))?;
     receiver
@@ -86,15 +92,22 @@ fn run_auto_runtime(config: BridgeConfig, hud: Option<HudHandle>) -> Result<(), 
     print_enabled_outputs(&config);
     print_optional_hud(hud.is_some());
 
-    loop {
-        while let Some(update) = receive_udp_update(
-            &receiver,
-            &sender,
-            &target,
-            &mut bridge,
-            &config,
-            &mut buffer,
-        )? {
+    while !shutdown_requested(&shutdown) {
+        loop {
+            if shutdown_requested(&shutdown) {
+                break;
+            }
+            let Some(update) = receive_udp_update(
+                &receiver,
+                &sender,
+                &target,
+                &mut bridge,
+                &config,
+                &mut buffer,
+            )?
+            else {
+                break;
+            };
             last_udp = Instant::now();
             set_source(&mut source, RuntimeSource::F1);
             if let Some(hud) = &hud
@@ -103,8 +116,12 @@ fn run_auto_runtime(config: BridgeConfig, hud: Option<HudHandle>) -> Result<(), 
                 hud.update(&update);
             }
             if !update.is_empty() {
-                recorder.ingest(&update, config.debug);
+                recorder.ingest(F1_25.id, &update, config.debug);
             }
+        }
+
+        if shutdown_requested(&shutdown) {
+            break;
         }
 
         let udp_recent = last_udp.elapsed() < UDP_PRIORITY_WINDOW;
@@ -112,6 +129,8 @@ fn run_auto_runtime(config: BridgeConfig, hud: Option<HudHandle>) -> Result<(), 
             frame_identifier = frame_identifier.wrapping_add(1);
             if try_shared_memory_update(
                 &hud,
+                &mut recorder,
+                config.debug,
                 &mut source,
                 &mut frame_identifier,
                 &mut last_lmu_warning,
@@ -139,6 +158,8 @@ fn run_auto_runtime(config: BridgeConfig, hud: Option<HudHandle>) -> Result<(), 
 
         thread::sleep(LOOP_INTERVAL);
     }
+
+    Ok(())
 }
 
 fn receive_udp_update(
@@ -181,6 +202,8 @@ fn receive_udp_update(
 
 fn try_shared_memory_update(
     hud: &Option<HudHandle>,
+    recorder: &mut TelemetryRecorder,
+    debug: bool,
     source: &mut RuntimeSource,
     frame_identifier: &mut u32,
     last_lmu_warning: &mut Instant,
@@ -189,6 +212,8 @@ fn try_shared_memory_update(
     #[cfg(not(windows))]
     {
         let _ = hud;
+        let _ = recorder;
+        let _ = debug;
         let _ = source;
         let _ = frame_identifier;
         let _ = last_lmu_warning;
@@ -205,6 +230,7 @@ fn try_shared_memory_update(
                     if let Some(hud) = hud {
                         hud.update(&update);
                     }
+                    recorder.ingest(LMU.id, &update, debug);
                     return Ok(true);
                 }
                 Ok(None) => return Ok(true),
@@ -222,6 +248,7 @@ fn try_shared_memory_update(
                     if let Some(hud) = hud {
                         hud.update(&update);
                     }
+                    recorder.ingest(ACE.id, &update, debug);
                     return Ok(true);
                 }
                 Ok(None) => return Ok(true),

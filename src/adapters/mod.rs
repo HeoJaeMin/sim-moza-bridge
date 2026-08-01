@@ -16,6 +16,8 @@ use crate::hud::HudHandle;
 #[cfg(windows)]
 use crate::logging::{TelemetryRecorder, print_enabled_outputs};
 #[cfg(windows)]
+use crate::runtime_control::{ShutdownToken, never_stop_token, shutdown_requested};
+#[cfg(windows)]
 use crate::telemetry::TelemetryUpdate;
 
 #[cfg(windows)]
@@ -42,6 +44,7 @@ where
         snapshot_size,
         parse_update,
         None,
+        never_stop_token(),
     )
 }
 
@@ -53,6 +56,7 @@ fn run_shared_memory_adapter_with_hud<F>(
     snapshot_size: usize,
     parse_update: F,
     hud: Option<HudHandle>,
+    shutdown: ShutdownToken,
 ) -> Result<(), String>
 where
     F: FnMut(&[u8], u32) -> Result<Option<TelemetryUpdate>, String>,
@@ -64,6 +68,7 @@ where
         snapshot_size,
         parse_update,
         hud,
+        shutdown,
     )
 }
 
@@ -75,6 +80,7 @@ fn run_shared_memory_adapter_loop<F>(
     snapshot_size: usize,
     mut parse_update: F,
     hud: Option<HudHandle>,
+    shutdown: ShutdownToken,
 ) -> Result<(), String>
 where
     F: FnMut(&[u8], u32) -> Result<Option<TelemetryUpdate>, String>,
@@ -90,7 +96,7 @@ where
     print_enabled_outputs(&config);
     print_optional_hud(hud.is_some());
 
-    loop {
+    while !shutdown_requested(&shutdown) {
         match shared_memory::read_mapping(mapping_name, snapshot_size) {
             Ok(snapshot) => {
                 warned = false;
@@ -99,7 +105,7 @@ where
                     if let Some(hud) = &hud {
                         hud.update(&update);
                     }
-                    recorder.ingest(&update, config.debug);
+                    recorder.ingest(config.game.id, &update, config.debug);
                 }
             }
             Err(error) => {
@@ -113,6 +119,8 @@ where
 
         thread::sleep(POLL_INTERVAL);
     }
+
+    Ok(())
 }
 
 #[cfg(windows)]

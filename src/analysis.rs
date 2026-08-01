@@ -1,7 +1,10 @@
 use std::fmt::Write as _;
 
+use serde::{Deserialize, Serialize};
+
 use crate::telemetry::{
-    DamageSample, InputSample, LapSample, SessionSample, StatusSample, TelemetryUpdate,
+    CarSetupSample, DamageSample, InputSample, LapSample, SessionSample, StatusSample,
+    TelemetryUpdate, f1_session_type_name,
 };
 
 const SEGMENT_COUNT: usize = 20;
@@ -9,6 +12,7 @@ const MIN_REPORT_SAMPLES: usize = 12;
 
 #[derive(Clone, Debug)]
 pub struct TracePoint {
+    pub session_time: f32,
     pub lap_distance_m: f32,
     pub speed_kmh: u16,
     pub throttle: f32,
@@ -34,12 +38,29 @@ pub struct CornerSummary {
 
 impl CornerSummary {
     pub fn csv_header() -> &'static str {
-        "lap,clean,segment,start_m,end_m,samples,min_speed_kmh,max_speed_kmh,avg_speed_kmh,max_brake,max_throttle,avg_abs_steer,max_abs_steer,phase\n"
+        "lap,clean,segment,start_m,end_m,samples,min_speed_kmh,max_speed_kmh,avg_speed_kmh,max_brake,max_throttle,avg_abs_steer,max_abs_steer,phase,session_uid,session_type,session_type_name\n"
     }
 
     pub fn csv_row(&self, lap_num: u8, clean: bool) -> String {
+        self.csv_row_with_session(lap_num, clean, None, None)
+    }
+
+    pub fn csv_row_with_session(
+        &self,
+        lap_num: u8,
+        clean: bool,
+        session_uid: Option<u64>,
+        session_type: Option<u8>,
+    ) -> String {
+        let session_uid = session_uid
+            .map(|value| value.to_string())
+            .unwrap_or_default();
+        let session_type_value = session_type
+            .map(|value| value.to_string())
+            .unwrap_or_default();
+        let session_type_name = session_type.map(f1_session_type_name).unwrap_or("");
         format!(
-            "{},{},{},{:.1},{:.1},{},{},{},{:.1},{:.4},{:.4},{:.4},{:.4},{}\n",
+            "{},{},{},{:.1},{:.1},{},{},{},{:.1},{:.4},{:.4},{:.4},{:.4},{},{},{},{}\n",
             lap_num,
             clean,
             self.segment,
@@ -53,21 +74,26 @@ impl CornerSummary {
             self.max_throttle,
             self.avg_abs_steer,
             self.max_abs_steer,
-            self.phase
+            self.phase,
+            session_uid,
+            session_type_value,
+            session_type_name
         )
     }
 }
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, Deserialize, Serialize)]
 pub struct SetupRecommendation {
     pub area: String,
     pub reason: String,
     pub action: String,
-    pub confidence: &'static str,
+    pub confidence: String,
 }
 
 #[derive(Clone, Debug)]
 pub struct CompletedLapAnalysis {
+    pub session_uid: Option<u64>,
+    pub session_type: Option<u8>,
     pub lap_num: u8,
     pub lap_time_ms: u32,
     pub clean: bool,
@@ -78,6 +104,7 @@ pub struct CompletedLapAnalysis {
     pub recommendations: Vec<SetupRecommendation>,
     pub latest_damage: Option<DamageSample>,
     pub latest_status: Option<StatusSample>,
+    pub latest_setup: Option<CarSetupSample>,
 }
 
 impl CompletedLapAnalysis {
@@ -100,13 +127,26 @@ impl CompletedLapAnalysis {
             let _ = writeln!(out);
             let _ = writeln!(out, "## Current Car State");
             let _ = writeln!(out);
-            let _ = writeln!(
-                out,
-                "- Fuel remaining: {:.2} laps",
-                status.fuel_remaining_laps
-            );
+            if let Some(fuel_delta_laps) = status.fuel_delta_laps {
+                let _ = writeln!(out, "- Fuel delta: {fuel_delta_laps:+.2} laps");
+            }
             let _ = writeln!(out, "- Brake bias: {}%", status.front_brake_bias);
             let _ = writeln!(out, "- ERS: {:.1}%", status.ers_percent());
+            let _ = writeln!(
+                out,
+                "- ERS harvested this lap: {:.0} J (MGU-K {:.0} / MGU-H {:.0})",
+                status.ers_harvested_this_lap(),
+                status.ers_harvested_this_lap_mguk,
+                status.ers_harvested_this_lap_mguh
+            );
+            if let Some(limit) = status.ers_harvest_limit_per_lap {
+                let _ = writeln!(out, "- ERS harvest limit this lap: {limit:.0} J");
+            }
+            let _ = writeln!(
+                out,
+                "- ERS deployed this lap: {:.0} J",
+                status.ers_deployed_this_lap
+            );
             let _ = writeln!(out, "- Tyre age: {} laps", status.tyres_age_laps);
         }
 
@@ -118,6 +158,43 @@ impl CompletedLapAnalysis {
                 out,
                 "- FL {:.1}% / FR {:.1}% / RL {:.1}% / RR {:.1}%",
                 damage.tyre_wear.fl, damage.tyre_wear.fr, damage.tyre_wear.rl, damage.tyre_wear.rr
+            );
+        }
+
+        if let Some(setup) = &self.latest_setup {
+            let _ = writeln!(out);
+            let _ = writeln!(out, "## Current Setup");
+            let _ = writeln!(out);
+            let _ = writeln!(out, "- Wings: {} / {}", setup.front_wing, setup.rear_wing);
+            let _ = writeln!(
+                out,
+                "- Differential: {}% on / {}% off",
+                setup.on_throttle_differential_percent, setup.off_throttle_differential_percent
+            );
+            let _ = writeln!(
+                out,
+                "- Suspension: {} / {}, anti-roll bars: {} / {}",
+                setup.front_suspension,
+                setup.rear_suspension,
+                setup.front_anti_roll_bar,
+                setup.rear_anti_roll_bar
+            );
+            let _ = writeln!(
+                out,
+                "- Ride height: {} / {}, brake pressure: {}%, brake bias: {}%, engine braking: {}%",
+                setup.front_ride_height,
+                setup.rear_ride_height,
+                setup.brake_pressure_percent,
+                setup.brake_bias_percent,
+                setup.engine_braking_percent
+            );
+            let _ = writeln!(
+                out,
+                "- Tyre pressures FL {:.1} / FR {:.1} / RL {:.1} / RR {:.1} PSI",
+                setup.tyre_pressures_psi.fl,
+                setup.tyre_pressures_psi.fr,
+                setup.tyre_pressures_psi.rl,
+                setup.tyre_pressures_psi.rr
             );
         }
 
@@ -182,18 +259,47 @@ impl CompletedLapAnalysis {
 
 #[derive(Default)]
 pub struct TelemetryAnalyzer {
+    session_uid: Option<u64>,
+    last_session_time: Option<f32>,
     latest_input: Option<InputSample>,
     latest_lap: Option<LapSample>,
     latest_session: Option<SessionSample>,
     latest_damage: Option<DamageSample>,
     latest_status: Option<StatusSample>,
+    latest_setup: Option<CarSetupSample>,
     current_points: Vec<TracePoint>,
     current_lap_invalid: bool,
     pit_seen: bool,
+    last_completed_lap: Option<u8>,
 }
 
 impl TelemetryAnalyzer {
     pub fn ingest(&mut self, update: &TelemetryUpdate) -> Option<CompletedLapAnalysis> {
+        if let Some(session_uid) = update.session_uid {
+            if self
+                .session_uid
+                .is_some_and(|previous| previous != session_uid)
+            {
+                *self = Self::default();
+            }
+            self.session_uid = Some(session_uid);
+        }
+
+        let update_session_time = newest_update_session_time(update);
+        let flashback = self
+            .last_session_time
+            .zip(update_session_time)
+            .is_some_and(|(previous, current)| current + 1.0 < previous);
+        if flashback && let Some(session_time) = update_session_time {
+            self.rewind_timeline(update, session_time);
+            self.last_session_time = Some(session_time);
+        } else if let Some(session_time) = update_session_time {
+            self.last_session_time = Some(
+                self.last_session_time
+                    .map_or(session_time, |previous| previous.max(session_time)),
+            );
+        }
+
         if let Some(session) = &update.session {
             self.latest_session = Some(session.clone());
         }
@@ -203,8 +309,11 @@ impl TelemetryAnalyzer {
         if let Some(status) = &update.status {
             self.latest_status = Some(status.clone());
         }
+        if let Some(setup) = &update.setup {
+            self.latest_setup = Some(setup.clone());
+        }
 
-        let completed = update
+        let mut completed = update
             .lap
             .as_ref()
             .and_then(|lap| self.ingest_lap(lap.clone()));
@@ -214,24 +323,51 @@ impl TelemetryAnalyzer {
             self.push_trace_point(input);
         }
 
+        if completed.is_none()
+            && let Some(final_classification) = &update.final_classification
+            && matches!(final_classification.result_status, 3..=7)
+        {
+            completed = self.complete_final_lap(final_classification.num_laps);
+        }
+
         completed
     }
 
     fn ingest_lap(&mut self, lap: LapSample) -> Option<CompletedLapAnalysis> {
+        if self.session_uid.is_none()
+            && self
+                .latest_lap
+                .as_ref()
+                .is_some_and(|previous| lap.session_time + 5.0 < previous.session_time)
+        {
+            *self = Self::default();
+        }
+
+        if let Some(previous) = &self.latest_lap
+            && lap.session_time < previous.session_time
+            && lap.frame_identifier < previous.frame_identifier
+        {
+            return None;
+        }
+
         let completed = self
             .latest_lap
             .as_ref()
             .filter(|previous| is_new_lap(previous, &lap, self.track_length_m()))
-            .map(|previous| {
+            .and_then(|previous| {
+                if self.last_completed_lap == Some(previous.current_lap_num) {
+                    return None;
+                }
                 let lap_time_ms = if lap.last_lap_time_ms > 0 {
                     lap.last_lap_time_ms
                 } else {
                     previous.current_lap_time_ms
                 };
-                self.complete_lap(previous.current_lap_num, lap_time_ms)
+                Some(self.complete_lap(previous.current_lap_num, lap_time_ms))
             });
 
         if completed.is_some() {
+            self.last_completed_lap = completed.as_ref().map(|lap| lap.lap_num);
             self.current_points.clear();
             self.current_lap_invalid = false;
             self.pit_seen = false;
@@ -241,6 +377,35 @@ impl TelemetryAnalyzer {
         self.pit_seen |= lap.pit_status != 0;
         self.latest_lap = Some(lap);
         completed
+    }
+
+    fn complete_final_lap(&mut self, final_lap_num: u8) -> Option<CompletedLapAnalysis> {
+        if final_lap_num == 0
+            || self.last_completed_lap == Some(final_lap_num)
+            || self.current_points.len() < MIN_REPORT_SAMPLES
+        {
+            return None;
+        }
+        let latest_lap = self.latest_lap.as_ref()?;
+        if !matches!(latest_lap.current_lap_num, value if value == final_lap_num || value == final_lap_num.saturating_add(1))
+        {
+            return None;
+        }
+        let lap_time_ms = if latest_lap.current_lap_num == final_lap_num {
+            latest_lap.current_lap_time_ms
+        } else {
+            latest_lap.last_lap_time_ms
+        };
+        if !(10_000..600_000).contains(&lap_time_ms) {
+            return None;
+        }
+
+        let completed = self.complete_lap(final_lap_num, lap_time_ms);
+        self.last_completed_lap = Some(final_lap_num);
+        self.current_points.clear();
+        self.current_lap_invalid = false;
+        self.pit_seen = false;
+        Some(completed)
     }
 
     fn push_trace_point(&mut self, input: &InputSample) {
@@ -253,6 +418,7 @@ impl TelemetryAnalyzer {
         }
 
         self.current_points.push(TracePoint {
+            session_time: input.session_time,
             lap_distance_m: lap.lap_distance_m,
             speed_kmh: input.speed_kmh,
             throttle: input.throttle,
@@ -261,16 +427,47 @@ impl TelemetryAnalyzer {
         });
     }
 
+    fn rewind_timeline(&mut self, update: &TelemetryUpdate, target_session_time: f32) {
+        let previous_lap_num = self.latest_lap.as_ref().map(|lap| lap.current_lap_num);
+        let target_lap_num = update
+            .lap
+            .as_ref()
+            .map(|lap| lap.current_lap_num)
+            .or(previous_lap_num);
+
+        if target_lap_num == previous_lap_num {
+            self.current_points
+                .retain(|point| point.session_time <= target_session_time + 0.05);
+        } else {
+            self.current_points.clear();
+            self.last_completed_lap = target_lap_num.map(|lap| lap.saturating_sub(1));
+        }
+
+        self.latest_input = None;
+        self.latest_lap = update.lap.clone();
+        self.latest_damage = None;
+        self.latest_status = None;
+        self.current_lap_invalid = update
+            .lap
+            .as_ref()
+            .is_some_and(|lap| lap.current_lap_invalid);
+        self.pit_seen = update.lap.as_ref().is_some_and(|lap| lap.pit_status != 0);
+    }
+
     fn complete_lap(&self, lap_num: u8, lap_time_ms: u32) -> CompletedLapAnalysis {
         let track_length_m = self.track_length_m();
         let enough_samples = self.current_points.len() >= MIN_REPORT_SAMPLES;
-        let clean = !self.current_lap_invalid && !self.pit_seen && enough_samples;
+        let full_lap_coverage = trace_covers_full_lap(&self.current_points, track_length_m);
+        let clean =
+            !self.current_lap_invalid && !self.pit_seen && enough_samples && full_lap_coverage;
         let invalid_reason = if clean {
             None
         } else if self.current_lap_invalid {
             Some("current lap was marked invalid by F1 25".to_owned())
         } else if self.pit_seen {
             Some("pit status was active during the lap".to_owned())
+        } else if !full_lap_coverage {
+            Some("trace did not cover the complete lap from start to finish".to_owned())
         } else {
             Some(format!(
                 "not enough trace samples: {} < {}",
@@ -285,12 +482,18 @@ impl TelemetryAnalyzer {
                 &self.latest_damage,
                 &self.latest_status,
                 &self.latest_input,
+                &self.latest_setup,
             )
         } else {
             Vec::new()
         };
 
         CompletedLapAnalysis {
+            session_uid: self.session_uid,
+            session_type: self
+                .latest_session
+                .as_ref()
+                .map(|session| session.session_type),
             lap_num,
             lap_time_ms,
             clean,
@@ -301,6 +504,7 @@ impl TelemetryAnalyzer {
             recommendations,
             latest_damage: self.latest_damage.clone(),
             latest_status: self.latest_status.clone(),
+            latest_setup: self.latest_setup.clone(),
         }
     }
 
@@ -318,6 +522,43 @@ impl TelemetryAnalyzer {
             .unwrap_or(1.0)
             .max(1.0)
     }
+}
+
+fn newest_update_session_time(update: &TelemetryUpdate) -> Option<f32> {
+    [
+        update.input.as_ref().map(|sample| sample.session_time),
+        update.lap.as_ref().map(|sample| sample.session_time),
+        update.session.as_ref().map(|sample| sample.session_time),
+        update.damage.as_ref().map(|sample| sample.session_time),
+        update.status.as_ref().map(|sample| sample.session_time),
+        update.setup.as_ref().map(|sample| sample.session_time),
+        update.tyre_sets.as_ref().map(|sample| sample.session_time),
+        update
+            .final_classification
+            .as_ref()
+            .map(|sample| sample.session_time),
+    ]
+    .into_iter()
+    .flatten()
+    .filter(|value| value.is_finite() && *value >= 0.0)
+    .max_by(|left, right| left.total_cmp(right))
+}
+
+fn trace_covers_full_lap(points: &[TracePoint], track_length_m: f32) -> bool {
+    if track_length_m < 1_000.0 {
+        return false;
+    }
+    let edge_window_m = (track_length_m * 0.05).clamp(100.0, 300.0);
+    let min_distance = points
+        .iter()
+        .map(|point| point.lap_distance_m)
+        .min_by(|left, right| left.total_cmp(right));
+    let max_distance = points
+        .iter()
+        .map(|point| point.lap_distance_m)
+        .max_by(|left, right| left.total_cmp(right));
+    min_distance.is_some_and(|distance| distance <= edge_window_m)
+        && max_distance.is_some_and(|distance| distance >= track_length_m - edge_window_m)
 }
 
 fn is_new_lap(previous: &LapSample, current: &LapSample, track_length_m: f32) -> bool {
@@ -357,6 +598,7 @@ fn recommend_setup(
     damage: &Option<DamageSample>,
     status: &Option<StatusSample>,
     input: &Option<InputSample>,
+    setup: &Option<CarSetupSample>,
 ) -> Vec<SetupRecommendation> {
     let mut recommendations = Vec::new();
     let front_wear_delta = damage
@@ -379,6 +621,16 @@ fn recommend_setup(
             && corner.avg_speed_kmh < 210.0
     });
     if mid_understeer || front_wear_delta > 2.0 || front_temp_delta > 5.0 {
+        let action = setup.as_ref().map_or_else(
+            || "프런트 윙을 한 클릭 올리고, 나머지는 유지한 채 클린 랩 두 개로 비교".to_owned(),
+            |setup| {
+                format!(
+                    "프런트 윙 {}에서 {}. 나머지는 유지하고 클린 랩 두 개로 비교",
+                    setup.front_wing,
+                    setup.front_wing.saturating_add(1)
+                )
+            },
+        );
         recommendations.push(SetupRecommendation {
             area: "Mid-corner front grip".to_owned(),
             reason: format!(
@@ -387,8 +639,9 @@ fn recommend_setup(
                 front_wear_delta,
                 front_temp_delta
             ),
-            action: "Try front wing +1, soften front anti-roll bar one click, or reduce front tyre pressure by 0.1 PSI.".to_owned(),
-            confidence: confidence(front_wear_delta.abs().max(front_temp_delta.abs()), 2.0, 5.0),
+            action,
+            confidence: confidence(front_wear_delta.abs().max(front_temp_delta.abs()), 2.0, 5.0)
+                .to_owned(),
         });
     }
 
@@ -399,6 +652,19 @@ fn recommend_setup(
             && corner.avg_speed_kmh < 230.0
     });
     if exit_instability || rear_wear_delta > 2.0 || rear_temp_delta > 5.0 {
+        let action = setup.as_ref().map_or_else(
+            || {
+                "온스로틀 디퍼렌셜을 5퍼센트 낮추고, 나머지는 유지한 채 클린 랩 두 개로 비교"
+                    .to_owned()
+            },
+            |setup| {
+                format!(
+                    "온스로틀 디퍼렌셜 {}에서 {}. 나머지는 유지하고 클린 랩 두 개로 비교",
+                    setup.on_throttle_differential_percent,
+                    setup.on_throttle_differential_percent.saturating_sub(5)
+                )
+            },
+        );
         recommendations.push(SetupRecommendation {
             area: "Corner exit traction".to_owned(),
             reason: format!(
@@ -407,8 +673,9 @@ fn recommend_setup(
                 rear_wear_delta,
                 rear_temp_delta
             ),
-            action: "Try on-throttle differential -3 to -5, rear wing +1, or rear tyre pressure -0.1 PSI.".to_owned(),
-            confidence: confidence(rear_wear_delta.abs().max(rear_temp_delta.abs()), 2.0, 5.0),
+            action,
+            confidence: confidence(rear_wear_delta.abs().max(rear_temp_delta.abs()), 2.0, 5.0)
+                .to_owned(),
         });
     }
 
@@ -422,11 +689,20 @@ fn recommend_setup(
             .unwrap_or_default();
         recommendations.push(SetupRecommendation {
             area: "Corner entry braking".to_owned(),
-            reason: format!(
-                "high brake plus steering overlap appeared in entry segments.{bias}"
+            reason: format!("high brake plus steering overlap appeared in entry segments.{bias}"),
+            action: setup.as_ref().map_or_else(
+                || {
+                    "세팅은 유지하고 브레이크를 조금 일찍 풀어 한 랩 확인한 뒤 바이어스 변경 판단"
+                        .to_owned()
+                },
+                |setup| {
+                    format!(
+                        "브레이크 바이어스 {}퍼센트 유지. 브레이크를 조금 일찍 풀어 한 랩 확인",
+                        setup.brake_bias_percent
+                    )
+                },
             ),
-            action: "If the rear rotates, move brake bias +1 forward or increase off-throttle diff slightly; if it pushes wide, move bias -1 and trail off brake earlier.".to_owned(),
-            confidence: "medium",
+            confidence: "medium".to_owned(),
         });
     }
 
@@ -439,9 +715,11 @@ fn recommend_setup(
     {
         recommendations.push(SetupRecommendation {
             area: "Baseline validation".to_owned(),
-            reason: "trace has corner samples but no strong imbalance crossed the threshold.".to_owned(),
-            action: "Keep setup unchanged and record another clean lap with the same fuel, tyre age, and ERS mode.".to_owned(),
-            confidence: "low",
+            reason: "trace has corner samples but no strong imbalance crossed the threshold."
+                .to_owned(),
+            action: "세팅을 유지하고 같은 연료, 타이어 상태, ERS 모드로 클린 랩을 추가 확보"
+                .to_owned(),
+            confidence: "low".to_owned(),
         });
     }
 
@@ -546,12 +824,13 @@ impl SegmentAccumulator {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::telemetry::{TelemetryUpdate, WheelValuesF32};
+    use crate::telemetry::{FinalClassificationSample, TelemetryUpdate, WheelValuesF32};
 
     fn lap_sample(lap_num: u8, lap_distance_m: f32, invalid: bool) -> LapSample {
         LapSample {
             session_time: 0.0,
             frame_identifier: 0,
+            overall_frame_identifier: None,
             player_car_index: 0,
             last_lap_time_ms: 90_000,
             current_lap_time_ms: 10_000,
@@ -560,13 +839,17 @@ mod tests {
             car_position: 1,
             current_lap_num: lap_num,
             pit_status: 0,
+            num_pit_stops: 0,
             sector: 1,
             current_lap_invalid: invalid,
             driver_status: 4,
             result_status: 2,
             delta_to_car_in_front_ms: None,
+            car_in_front_index: None,
             delta_to_car_behind_ms: None,
+            car_behind_index: None,
             delta_to_race_leader_ms: None,
+            safety_car_delta_s: None,
             sector1_time_ms: None,
             sector2_time_ms: None,
         }
@@ -576,6 +859,7 @@ mod tests {
     fn summarizes_trace_into_segments() {
         let points = vec![
             TracePoint {
+                session_time: 1.0,
                 lap_distance_m: 100.0,
                 speed_kmh: 90,
                 throttle: 0.0,
@@ -583,6 +867,7 @@ mod tests {
                 steer: 0.3,
             },
             TracePoint {
+                session_time: 1.1,
                 lap_distance_m: 110.0,
                 speed_kmh: 100,
                 throttle: 0.1,
@@ -631,7 +916,7 @@ mod tests {
             engine_damage: 0,
         });
 
-        let recommendations = recommend_setup(&[], &damage, &None, &None);
+        let recommendations = recommend_setup(&[], &damage, &None, &None, &None);
 
         assert!(
             recommendations
@@ -647,6 +932,8 @@ mod tests {
             session: Some(SessionSample {
                 session_time: 0.0,
                 frame_identifier: 0,
+                overall_frame_identifier: None,
+                weather: 0,
                 total_laps: 10,
                 track_length_m: 5_000,
                 session_type: 10,
@@ -654,7 +941,13 @@ mod tests {
                 track_temp_c: 0,
                 air_temp_c: 0,
                 session_time_left_s: 0,
+                pit_speed_limit_kmh: 0,
+                safety_car_status: 0,
                 marshal_zones: Vec::new(),
+                weather_forecast_samples: Vec::new(),
+                pit_stop_window_ideal_lap: None,
+                pit_stop_window_latest_lap: None,
+                pit_stop_rejoin_position: None,
             }),
             ..TelemetryUpdate::default()
         });
@@ -678,6 +971,8 @@ mod tests {
             session: Some(SessionSample {
                 session_time: 0.0,
                 frame_identifier: 0,
+                overall_frame_identifier: None,
+                weather: 0,
                 total_laps: 10,
                 track_length_m: 5_000,
                 session_type: 10,
@@ -685,7 +980,13 @@ mod tests {
                 track_temp_c: 0,
                 air_temp_c: 0,
                 session_time_left_s: 0,
+                pit_speed_limit_kmh: 0,
+                safety_car_status: 0,
                 marshal_zones: Vec::new(),
+                weather_forecast_samples: Vec::new(),
+                pit_stop_window_ideal_lap: None,
+                pit_stop_window_latest_lap: None,
+                pit_stop_rejoin_position: None,
             }),
             ..TelemetryUpdate::default()
         });
@@ -703,10 +1004,66 @@ mod tests {
     }
 
     #[test]
+    fn final_classification_flushes_the_last_lap_once() {
+        let mut analyzer = TelemetryAnalyzer {
+            latest_lap: Some(LapSample {
+                current_lap_time_ms: 91_500,
+                ..lap_sample(53, 4_900.0, false)
+            }),
+            current_points: vec![
+                TracePoint {
+                    session_time: 5_400.0,
+                    lap_distance_m: 100.0,
+                    speed_kmh: 150,
+                    throttle: 0.5,
+                    brake: 0.0,
+                    steer: 0.1,
+                };
+                MIN_REPORT_SAMPLES
+            ],
+            ..TelemetryAnalyzer::default()
+        };
+        let final_classification = FinalClassificationSample {
+            session_time: 5_400.0,
+            frame_identifier: 90_000,
+            player_car_index: 0,
+            position: 1,
+            num_laps: 53,
+            grid_position: 4,
+            points: 25,
+            num_pit_stops: 1,
+            result_status: 3,
+            result_reason: 2,
+            best_lap_time_ms: 89_000,
+            total_race_time_s: 5_300.0,
+            penalties_time_s: 0,
+            num_penalties: 0,
+            num_tyre_stints: 2,
+            tyre_stints_actual: [0; 8],
+            tyre_stints_visual: [0; 8],
+            tyre_stints_end_laps: [0; 8],
+        };
+
+        let completed = analyzer.ingest(&TelemetryUpdate {
+            final_classification: Some(final_classification.clone()),
+            ..TelemetryUpdate::default()
+        });
+        let repeated = analyzer.ingest(&TelemetryUpdate {
+            final_classification: Some(final_classification),
+            ..TelemetryUpdate::default()
+        });
+
+        assert_eq!(completed.as_ref().map(|lap| lap.lap_num), Some(53));
+        assert_eq!(completed.as_ref().map(|lap| lap.lap_time_ms), Some(91_500));
+        assert!(repeated.is_none());
+    }
+
+    #[test]
     fn does_not_recommend_setup_for_invalid_laps() {
         let mut analyzer = TelemetryAnalyzer::default();
         analyzer.current_points = vec![
             TracePoint {
+                session_time: 1.0,
                 lap_distance_m: 100.0,
                 speed_kmh: 100,
                 throttle: 0.1,
@@ -750,5 +1107,97 @@ mod tests {
         assert!(!analysis.clean);
         assert!(analysis.recommendations.is_empty());
         assert!(analysis.to_markdown().contains("Not evaluated"));
+    }
+
+    #[test]
+    fn completed_lap_preserves_session_context() {
+        let analyzer = TelemetryAnalyzer {
+            session_uid: Some(5_154_468_281_529_202_801),
+            latest_session: Some(SessionSample {
+                session_time: 10.0,
+                frame_identifier: 100,
+                overall_frame_identifier: None,
+                weather: 0,
+                total_laps: 57,
+                track_length_m: 5_000,
+                session_type: 15,
+                track_id: 1,
+                track_temp_c: 30,
+                air_temp_c: 20,
+                session_time_left_s: 3_600,
+                pit_speed_limit_kmh: 80,
+                safety_car_status: 0,
+                marshal_zones: Vec::new(),
+                weather_forecast_samples: Vec::new(),
+                pit_stop_window_ideal_lap: None,
+                pit_stop_window_latest_lap: None,
+                pit_stop_rejoin_position: None,
+            }),
+            current_points: vec![
+                TracePoint {
+                    session_time: 1.0,
+                    lap_distance_m: 100.0,
+                    speed_kmh: 150,
+                    throttle: 0.5,
+                    brake: 0.0,
+                    steer: 0.1,
+                };
+                MIN_REPORT_SAMPLES
+            ],
+            ..TelemetryAnalyzer::default()
+        };
+
+        let completed = analyzer.complete_lap(3, 90_000);
+
+        assert_eq!(completed.session_uid, Some(5_154_468_281_529_202_801));
+        assert_eq!(completed.session_type, Some(15));
+    }
+
+    #[test]
+    fn flashback_discards_superseded_corner_trace_points() {
+        let mut previous_lap = lap_sample(12, 2_200.0, false);
+        previous_lap.session_time = 1_074.0;
+        let mut target_lap = lap_sample(12, 1_700.0, false);
+        target_lap.session_time = 1_064.0;
+        let mut analyzer = TelemetryAnalyzer {
+            session_uid: Some(42),
+            last_session_time: Some(1_074.0),
+            latest_lap: Some(previous_lap),
+            current_points: vec![
+                TracePoint {
+                    session_time: 1_060.0,
+                    lap_distance_m: 1_500.0,
+                    speed_kmh: 150,
+                    throttle: 0.5,
+                    brake: 0.0,
+                    steer: 0.1,
+                },
+                TracePoint {
+                    session_time: 1_070.0,
+                    lap_distance_m: 2_000.0,
+                    speed_kmh: 120,
+                    throttle: 0.0,
+                    brake: 0.0,
+                    steer: -0.6,
+                },
+            ],
+            ..TelemetryAnalyzer::default()
+        };
+
+        analyzer.rewind_timeline(
+            &TelemetryUpdate {
+                session_uid: Some(42),
+                lap: Some(target_lap),
+                ..TelemetryUpdate::default()
+            },
+            1_064.0,
+        );
+
+        assert_eq!(analyzer.current_points.len(), 1);
+        assert_eq!(analyzer.current_points[0].session_time, 1_060.0);
+        assert_eq!(
+            analyzer.latest_lap.as_ref().map(|lap| lap.lap_distance_m),
+            Some(1_700.0)
+        );
     }
 }

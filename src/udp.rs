@@ -1,3 +1,4 @@
+use std::io::ErrorKind;
 use std::net::UdpSocket;
 use std::time::{Duration, Instant};
 
@@ -5,24 +6,33 @@ use crate::bridge::TelemetryBridge;
 use crate::config::BridgeConfig;
 use crate::hud::HudHandle;
 use crate::logging::{TelemetryRecorder, print_enabled_outputs};
+use crate::runtime_control::{ShutdownToken, never_stop_token, shutdown_requested};
 
 const UDP_BUFFER_SIZE: usize = 65_535;
 
 #[cfg_attr(any(target_os = "macos", target_os = "windows"), allow(dead_code))]
 pub fn start_udp_bridge(config: BridgeConfig) -> Result<(), String> {
-    run_udp_bridge(config, None)
+    run_udp_bridge(config, None, never_stop_token())
 }
 
 pub fn start_udp_bridge_with_hud(
     config: BridgeConfig,
     hud: Option<HudHandle>,
+    shutdown: ShutdownToken,
 ) -> Result<(), String> {
-    run_udp_bridge(config, hud)
+    run_udp_bridge(config, hud, shutdown)
 }
 
-fn run_udp_bridge(config: BridgeConfig, hud: Option<HudHandle>) -> Result<(), String> {
+fn run_udp_bridge(
+    config: BridgeConfig,
+    hud: Option<HudHandle>,
+    shutdown: ShutdownToken,
+) -> Result<(), String> {
     let receiver = UdpSocket::bind(format!("{}:{}", config.listen_host, config.listen_port))
         .map_err(|error| format!("bind failed: {error}"))?;
+    receiver
+        .set_read_timeout(Some(Duration::from_millis(50)))
+        .map_err(|error| format!("failed to configure UDP receive timeout: {error}"))?;
     let sender =
         UdpSocket::bind("0.0.0.0:0").map_err(|error| format!("sender bind failed: {error}"))?;
     let target = format!("{}:{}", config.moza_host, config.moza_port);
@@ -59,10 +69,14 @@ fn run_udp_bridge(config: BridgeConfig, hud: Option<HudHandle>) -> Result<(), St
     print_enabled_outputs(&config);
     print_optional_hud(hud.is_some());
 
-    loop {
-        let (size, _) = receiver
-            .recv_from(&mut buffer)
-            .map_err(|error| format!("receive failed: {error}"))?;
+    while !shutdown_requested(&shutdown) {
+        let (size, _) = match receiver.recv_from(&mut buffer) {
+            Ok(received) => received,
+            Err(error) if matches!(error.kind(), ErrorKind::WouldBlock | ErrorKind::TimedOut) => {
+                continue;
+            }
+            Err(error) => return Err(format!("receive failed: {error}")),
+        };
         let packet = &buffer[..size];
 
         let Some(result) = bridge.process(packet) else {
@@ -86,7 +100,7 @@ fn run_udp_bridge(config: BridgeConfig, hud: Option<HudHandle>) -> Result<(), St
         }
 
         if !result.telemetry_update.is_empty() {
-            recorder.ingest(&result.telemetry_update, config.debug);
+            recorder.ingest(config.game.id, &result.telemetry_update, config.debug);
         }
 
         if !config.dry_run {
@@ -109,6 +123,8 @@ fn run_udp_bridge(config: BridgeConfig, hud: Option<HudHandle>) -> Result<(), St
             last_stats = Instant::now();
         }
     }
+
+    Ok(())
 }
 
 fn is_loopback_host(host: &str) -> bool {
@@ -118,5 +134,60 @@ fn is_loopback_host(host: &str) -> bool {
 fn print_optional_hud(enabled: bool) {
     if enabled {
         println!("HUD: native window");
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::bridge::BridgeMode;
+    use crate::games::F1_25;
+    use crate::runtime_control::{new_shutdown_token, request_shutdown};
+    use std::sync::Arc;
+    use std::thread;
+
+    fn test_config() -> BridgeConfig {
+        BridgeConfig {
+            game: F1_25,
+            listen_host: "127.0.0.1".to_owned(),
+            listen_port: 0,
+            moza_host: "127.0.0.1".to_owned(),
+            moza_port: 22025,
+            mode: BridgeMode::Passthrough,
+            fix_tyre_wear_order: false,
+            f1_24_car_damage_compat: false,
+            input_log: None,
+            corner_log: None,
+            analysis_report: None,
+            race_engineer: false,
+            engineer_voice: false,
+            engineer_log: None,
+            engineer_state: None,
+            engineer_history: None,
+            engineer_trigger: None,
+            engineer_hook: None,
+            engineer_ai_hook: None,
+            engineer_ai_task_id: None,
+            engineer_radio_hook: None,
+            dry_run: true,
+            debug: false,
+        }
+    }
+
+    #[test]
+    fn idle_udp_runtime_stops_after_shutdown_is_requested() {
+        let shutdown = new_shutdown_token();
+        let worker_shutdown = Arc::clone(&shutdown);
+        let worker = thread::spawn(move || run_udp_bridge(test_config(), None, worker_shutdown));
+
+        thread::sleep(Duration::from_millis(20));
+        request_shutdown(&shutdown);
+
+        let deadline = Instant::now() + Duration::from_secs(1);
+        while !worker.is_finished() && Instant::now() < deadline {
+            thread::sleep(Duration::from_millis(10));
+        }
+        assert!(worker.is_finished(), "idle UDP receive did not unblock");
+        assert!(worker.join().unwrap().is_ok());
     }
 }
