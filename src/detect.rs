@@ -1,12 +1,15 @@
-use crate::f1::constants::{F1_25_PACKET_FORMAT, packet_id};
+use crate::f1::constants::{F1_25_2026_SEASON_PACKET_FORMAT, F1_25_PACKET_FORMAT, packet_id};
 use crate::f1::header::parse_packet_header;
 use crate::games::{GameProfile, resolve_game_profile};
 
 pub fn detect_game_profile_from_packet(packet: &[u8]) -> Option<GameProfile> {
     let header = parse_packet_header(packet)?;
-    let is_known_f1_packet = header.packet_format == F1_25_PACKET_FORMAT
-        && header.game_year == 25
-        && header.packet_id <= packet_id::LAP_POSITIONS;
+    let last_packet_id = match header.packet_format {
+        F1_25_PACKET_FORMAT => packet_id::LAP_POSITIONS,
+        F1_25_2026_SEASON_PACKET_FORMAT => packet_id::CAR_TELEMETRY_2,
+        _ => return None,
+    };
+    let is_known_f1_packet = header.game_year == 25 && header.packet_id <= last_packet_id;
 
     if is_known_f1_packet {
         return resolve_game_profile("f1-25").ok();
@@ -31,6 +34,19 @@ mod tests {
     #[test]
     fn recognizes_f1_25_packets() {
         let packet = make_header_packet(F1_25_PACKET_FORMAT, 25, packet_id::CAR_DAMAGE);
+        assert_eq!(
+            detect_game_profile_from_packet(&packet).unwrap().id,
+            "f1-25"
+        );
+    }
+
+    #[test]
+    fn recognizes_f1_25_2026_season_packets() {
+        let packet = make_header_packet(
+            F1_25_2026_SEASON_PACKET_FORMAT,
+            25,
+            packet_id::CAR_TELEMETRY_2,
+        );
         assert_eq!(
             detect_game_profile_from_packet(&packet).unwrap().id,
             "f1-25"

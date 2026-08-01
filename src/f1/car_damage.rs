@@ -1,4 +1,4 @@
-use super::constants::{F1_24_PACKET_FORMAT, MAX_CARS, PACKET_HEADER_SIZE};
+use super::constants::{F1_24_PACKET_FORMAT, MAX_CARS, PACKET_HEADER_SIZE, max_cars_for_format};
 use super::header::parse_packet_header;
 use crate::telemetry::{DamageSample, WheelValuesF32, WheelValuesU8};
 
@@ -22,8 +22,12 @@ pub fn is_car_damage_packet_size(packet: &[u8]) -> bool {
 }
 
 pub fn car_damage_offset(car_index: usize) -> Result<usize, String> {
-    if car_index >= MAX_CARS {
-        return Err(format!("car_index must be between 0 and {}", MAX_CARS - 1));
+    car_damage_offset_for(car_index, MAX_CARS)
+}
+
+fn car_damage_offset_for(car_index: usize, max_cars: usize) -> Result<usize, String> {
+    if car_index >= max_cars {
+        return Err(format!("car_index must be between 0 and {}", max_cars - 1));
     }
 
     Ok(PACKET_HEADER_SIZE + car_index * CAR_DAMAGE_DATA_SIZE)
@@ -68,10 +72,13 @@ pub fn read_f1_tyre_wear(packet: &[u8], car_index: usize) -> Result<TyreWearByCo
 pub fn parse_player_damage_sample(packet: &[u8]) -> Result<DamageSample, String> {
     let header = parse_packet_header(packet)
         .ok_or_else(|| "packet is too short for F1 header".to_owned())?;
+    let max_cars = max_cars_for_format(header.packet_format)
+        .ok_or_else(|| format!("unsupported F1 packet format {}", header.packet_format))?;
     let car_index = header.player_car_index as usize;
-    let base = car_damage_offset(car_index)?;
+    let base = car_damage_offset_for(car_index, max_cars)?;
+    let packet_size = PACKET_HEADER_SIZE + max_cars * CAR_DAMAGE_DATA_SIZE;
 
-    if packet.len() < base + CAR_DAMAGE_DATA_SIZE || !is_car_damage_packet_size(packet) {
+    if packet.len() < base + CAR_DAMAGE_DATA_SIZE || packet.len() != packet_size {
         return Err("packet is too short for F1 car damage data".to_owned());
     }
 
@@ -151,7 +158,9 @@ pub fn to_f1_24_car_damage_compat_packet(packet: &[u8]) -> Option<Vec<u8>> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::f1::constants::F1_25_PACKET_FORMAT;
+    use crate::f1::constants::{
+        F1_25_2026_SEASON_PACKET_FORMAT, F1_25_PACKET_FORMAT, MAX_CARS_2026,
+    };
 
     fn make_car_damage_packet() -> Vec<u8> {
         vec![0_u8; CAR_DAMAGE_PACKET_SIZE]
@@ -286,5 +295,31 @@ mod tests {
         assert_eq!(compat[PACKET_HEADER_SIZE + 24], 9);
         assert_eq!(compat[PACKET_HEADER_SIZE + 25], 10);
         assert!(to_f1_24_car_damage_compat_packet(&vec![0_u8; 29]).is_none());
+    }
+
+    #[test]
+    fn parses_2026_season_car_damage_layout() {
+        let packet_size = PACKET_HEADER_SIZE + MAX_CARS_2026 * CAR_DAMAGE_DATA_SIZE;
+        let mut packet = vec![0_u8; packet_size];
+        packet[0..2].copy_from_slice(&F1_25_2026_SEASON_PACKET_FORMAT.to_le_bytes());
+        packet[2] = 25;
+        packet[6] = crate::f1::constants::packet_id::CAR_DAMAGE;
+        packet[15..19].copy_from_slice(&44.0_f32.to_le_bytes());
+        packet[27] = 23;
+        let base = car_damage_offset_for(23, MAX_CARS_2026).unwrap();
+        packet[base..base + 4].copy_from_slice(&11.0_f32.to_le_bytes());
+        packet[base + 4..base + 8].copy_from_slice(&12.0_f32.to_le_bytes());
+        packet[base + 8..base + 12].copy_from_slice(&13.0_f32.to_le_bytes());
+        packet[base + 12..base + 16].copy_from_slice(&14.0_f32.to_le_bytes());
+        packet[base + 28] = 15;
+        packet[base + 36] = 16;
+        packet[base + 37] = 17;
+
+        let sample = parse_player_damage_sample(&packet).unwrap();
+        assert_eq!(sample.player_car_index, 23);
+        assert_eq!(sample.tyre_wear.fl, 13.0);
+        assert_eq!(sample.front_left_wing_damage, 15);
+        assert_eq!(sample.gearbox_damage, 16);
+        assert_eq!(sample.engine_damage, 17);
     }
 }

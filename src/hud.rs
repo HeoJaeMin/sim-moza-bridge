@@ -1,7 +1,8 @@
 use std::sync::{Arc, Mutex};
 
 use crate::telemetry::{
-    DamageSample, InputSample, LapSample, SessionSample, StatusSample, TelemetryUpdate,
+    CarSetupSample, DamageSample, FinalClassificationSample, InputSample, LapSample,
+    RaceOrderSample, SessionSample, StatusSample, TelemetryUpdate, TyreSetsSample,
 };
 
 #[derive(Clone)]
@@ -26,20 +27,35 @@ impl HudHandle {
 
 #[derive(Clone, Debug, Default)]
 struct HudState {
+    packet_format: Option<u16>,
+    session_uid: Option<u64>,
     input: Option<InputSample>,
     lap: Option<LapSample>,
+    race_order: Option<RaceOrderSample>,
     session: Option<SessionSample>,
     damage: Option<DamageSample>,
     status: Option<StatusSample>,
+    setup: Option<CarSetupSample>,
+    tyre_sets: Option<TyreSetsSample>,
+    final_classification: Option<FinalClassificationSample>,
 }
 
 impl HudState {
     fn apply(&mut self, update: &TelemetryUpdate) {
+        if update.packet_format.is_some() {
+            self.packet_format = update.packet_format;
+        }
+        if update.session_uid.is_some() {
+            self.session_uid = update.session_uid;
+        }
         if let Some(input) = &update.input {
             self.input = Some(input.clone());
         }
         if let Some(lap) = &update.lap {
             self.lap = Some(lap.clone());
+        }
+        if let Some(race_order) = &update.race_order {
+            self.race_order = Some(race_order.clone());
         }
         if let Some(session) = &update.session {
             self.session = Some(session.clone());
@@ -50,15 +66,30 @@ impl HudState {
         if let Some(status) = &update.status {
             self.status = Some(status.clone());
         }
+        if let Some(setup) = &update.setup {
+            self.setup = Some(setup.clone());
+        }
+        if let Some(tyre_sets) = &update.tyre_sets {
+            self.tyre_sets = Some(tyre_sets.clone());
+        }
+        if let Some(final_classification) = &update.final_classification {
+            self.final_classification = Some(final_classification.clone());
+        }
     }
 
     fn snapshot(&self) -> TelemetryUpdate {
         TelemetryUpdate {
+            packet_format: self.packet_format,
+            session_uid: self.session_uid,
             input: self.input.clone(),
             lap: self.lap.clone(),
+            race_order: self.race_order.clone(),
             session: self.session.clone(),
             damage: self.damage.clone(),
             status: self.status.clone(),
+            setup: self.setup.clone(),
+            tyre_sets: self.tyre_sets.clone(),
+            final_classification: self.final_classification.clone(),
         }
     }
 }

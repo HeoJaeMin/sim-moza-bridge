@@ -4,15 +4,15 @@
 
 ## 기준
 
-- 확인일: 2026-05-19
-- F1 25 기준: F1 25 UDP 형식 `2025`
+- 확인일: 2026-07-30
+- F1 25 기준: F1 25 기본 UDP 형식 `2025` 및 2026 Season Pack UDP 형식 `2026`
 - MOZA 기준: MOZA Racing Support Center의 `Digital Dash Telemetry Support` 표
 - 주의: MOZA 공식 표에는 `F1 25` 컬럼이 없고 `F1 24`까지만 있습니다. 그래서 F1 계열 Pit House 키 지원 여부는 `F1 24` 컬럼을 기준으로 비교했습니다.
 
 참고 원문:
 
 - [MOZA Digital Dash Telemetry Support](https://support.mozaracing.com/en/support/solutions/articles/70000627978-digital-dash-telemetry-support)
-- [EA F1 25 UDP specification forum post](https://forums.ea.com/blog/f1-games-game-info-hub-en/f1%C2%AE-25-udp-specification/12187347)
+- [EA F1 25 2026 Season Pack UDP specification](https://forums.ea.com/blog/f1-games-game-info-hub-en/ea-sports%E2%84%A2-f1%C2%AE25-2026-season-pack-udp-specification/12187347)
 - [F1 25 UDP structure mirror used for field extraction](https://github.com/MacManley/f1-25-udp)
 
 ## 결론
@@ -131,6 +131,7 @@ F1 25의 모든 휠 배열은 같은 인덱스 순서를 씁니다.
 | ERS 배포 모드 | `m_ersDeployMode` | 직접 키 없음 | `0=없음`, `1=중간`, `2=핫랩`, `3=오버테이크` 라벨 변환 |
 | ERS deployed this lap | `m_ersDeployedThisLap` | `EnergyDeployed` | 직접 대응 |
 | ERS harvested this lap | `m_ersHarvestedThisLapMGUK`, `m_ersHarvestedThisLapMGUH` | `EnergyHarvested` | 두 값을 합산 |
+| 2026 랩당 ERS 회수 한도 | `m_ersHarvestedLimitPerLap` | 직접 키 없음 | 2026 Season Pack 전용. MGU-K/H 회수량과 함께 원본 줄 단위로 기록 |
 | ERS 고장 | `PacketCarDamageData.m_ersFault` | 직접 키 없음 | 손상/상태 HUD용 |
 | 엔진 출력 | `m_enginePowerICE`, `m_enginePowerMGUK` | 직접 키 없음 | 분석/로그용. F1 텔레메트리 공개 설정에 영향 받음 |
 
@@ -144,12 +145,12 @@ F1 25의 모든 휠 배열은 같은 인덱스 순서를 씁니다.
 | 총 랩 수 | `m_totalLaps` | `LapCount` | 직접 대응 |
 | 남은 세션 시간 | `m_sessionTimeLeft` | `SessionTimeLeft` | 직접 대응 |
 | 공기/트랙 온도 | `m_airTemperature`, `m_trackTemperature` | `AirTemp`, `TrackTemp`, 화씨 변형 | 직접/단위 변환 |
-| 날씨 | `m_weather` | 직접 키 없음 | 날씨 라벨/아이콘은 로컬 HUD용 |
-| 예보/비 확률 | `m_weatherForecastSamples[]`, `m_rainPercentage` | 직접 키 없음 | 전략/리포트용 |
+| 날씨 | `m_weather` | 직접 키 없음 | 공통 세션 상태로 파싱해 레이스 엔지니어의 우천·건조 전환 판단에 사용 |
+| 예보/비 확률 | `m_weatherForecastSamples[]`, `m_rainPercentage` | 직접 키 없음 | 64개 예보 슬롯을 파싱해 강우 전략 콜과 리포트에 사용 |
 | 마셜 구역 | `m_marshalZones[]` | `YellowFlag`, `GreenFlag` 등으로 파생 가능 | 차량 위치와 구역을 조합해야 정확함 |
 | 차량 FIA 플래그 | `PacketCarStatusData.m_vehicleFiaFlags` | `YellowFlag`, `GreenFlag` | `-1=알 수 없음`, `0=없음`, `1=녹색`, `2=파란색`, `3=노란색` |
 | 파랑/빨강/검정/흰색 플래그 | FIA 플래그, 이벤트, 결과 상태 조합 | MOZA F1 컬럼에서 일부 미지원 | 별도 검증 전에는 로컬 HUD/리포트용 |
-| 세이프티카 | `m_safetyCarStatus`, `m_numSafetyCarPeriods`, `m_numVirtualSafetyCarPeriods` | 직접 키 없음 | 레이스 컨트롤 HUD용 |
+| 세이프티카 | `m_safetyCarStatus`, `m_numSafetyCarPeriods`, `m_numVirtualSafetyCarPeriods` | 직접 키 없음 | 현재 SC/VSC 상태를 파싱해 레이스 컨트롤·재시작 콜과 전투 갭 억제에 사용 |
 | 관전 중 | `m_isSpectating` | `Spectating`은 F1 24 컬럼 미지원 | 로컬 상태 표시 |
 
 ### 손상, 마모, 내구성
@@ -199,17 +200,18 @@ F1 25의 모든 휠 배열은 같은 인덱스 순서를 씁니다.
 
 | F1 패킷 | 현재 코드 상태 | 빠진 주요 지표 |
 | --- | --- | --- |
-| `PacketSessionData` | 일부 파싱: 총 랩 수, 트랙 길이, 세션 유형, 트랙 ID, 트랙/공기 온도, 남은 세션 시간 | 날씨, 예보, 세이프티카, 마셜 구역 |
-| `PacketLapData` | 일부 파싱: 랩 타임, 섹터 1/2 타임, 앞차/선두와의 차이, 랩 거리, 순위, 랩, 피트, 섹터, 무효 여부, 드라이버/결과 상태 | 페널티, 경고, 피트 타이머, 스피드 트랩 |
+| `PacketSessionData` | 파싱: 총 랩 수, 트랙 길이, 세션 유형, 트랙 ID, 날씨·64개 예보, 트랙/공기 온도, 남은 세션 시간, 피트 제한 속도, SC/VSC, 마셜 구역, 피트 윈도·예상 복귀 순위 | 세션 설정 상세, 주말 구조, 보조 장치 설정 |
+| `PacketLapData` | 파싱: 22/24대 전체 순위·피트/주행 상태, 랩 타임, 섹터 1/2 타임, 앞뒤/선두와의 차이, SC 델타, 랩 거리, 순위, 랩, 피트 횟수, 섹터, 무효 여부, 드라이버/결과 상태 | 페널티, 경고, 피트 타이머, 스피드 트랩 |
 | `PacketCarTelemetryData` | 일부 파싱: 스로틀/브레이크/조향/클러치/속도/기어/RPM/DRS/REV/온도/압력 | 노면 유형, 추천 기어/MFD 패널 |
-| `PacketCarStatusData` | 일부 파싱: 보조 장치, 브레이크 바이어스, 연료, RPM 제한, DRS, DRS 활성 거리, 피트 리미터, 타이어 컴파운드/사용 랩 수, ERS | FIA 플래그, 엔진 출력, 네트워크 일시정지 |
+| `PacketCarStatusData` | 일부 파싱: 보조 장치, 브레이크 바이어스, 연료, RPM 제한, DRS, DRS 활성 거리, 피트 리미터, 타이어 컴파운드/사용 랩 수, ERS 저장·배포·MGU-K/H 회수량·2026 회수 한도 | FIA 플래그, 엔진 출력, 네트워크 일시정지 |
+| `PacketFinalClassificationData` | 플레이어 최종 순위, 완주 랩, 그리드, 결과 상태·이유, 베스트 랩, 총 시간, 페널티, 타이어 스틴트 파싱 | 전체 차량 최종 분류 |
 | `PacketCarDamageData` | 일부 파싱: 타이어 웨어/손상/블리스터, 윙 손상, 기어박스 손상, 엔진 손상 | 브레이크 손상, 플로어/디퓨저/사이드팟, 고장, 부품 마모 |
+| `PacketCarSetupData` | 플레이어의 앞/뒤 윙, 온/오프 스로틀 디퍼렌셜, 캠버·토, 서스펜션·안티롤바·차고, 브레이크, 엔진 브레이킹, 세팅 타이어 압력, 밸러스트, 연료량 파싱 | 다른 차량 세팅은 게임이 공개하지 않음 |
 | `PacketMotionData` | 미구현 | 위치, 속도 벡터, G-포스, 요/피치/롤 |
-| `PacketCarSetupData` | 미구현 | 세팅 추천/리포트에 필요 |
 | `PacketParticipantsData` | 미구현 | 플레이어/팀/이름/차량 식별 정보 |
 | `PacketEventData` | 미구현 | 페널티, 플래그, 스피드 트랩, 충돌, 추월 이벤트 |
 | `PacketSessionHistoryData` | 미구현 | 베스트 랩/스틴트 히스토리 |
-| `PacketTyreSetsData` | 미구현 | 타이어 세트 전략 |
+| `PacketTyreSetsData` | 플레이어의 20개 타이어 세트에 대해 실제/표시 컴파운드, 마모, 가용 여부, 권장 세션, 잔여·사용 가능 수명, 장착 상태 파싱 | 세트별 실제 온도 이력 |
 | `PacketMotionExData` | 미구현 | 슬립/힘/에어로 높이/고급 물리 |
 
 ## 멀티플레이 텔레메트리 공개 범위

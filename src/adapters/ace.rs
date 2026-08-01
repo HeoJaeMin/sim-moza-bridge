@@ -2,6 +2,7 @@
 
 use crate::config::BridgeConfig;
 use crate::hud::HudHandle;
+use crate::runtime_control::ShutdownToken;
 use crate::telemetry::{
     DamageSample, InputSample, StatusSample, TelemetryUpdate, WheelValuesF32, WheelValuesU8,
     WheelValuesU16,
@@ -42,11 +43,13 @@ pub fn start_ace_adapter(config: BridgeConfig) -> Result<(), String> {
 pub fn start_ace_adapter_with_hud(
     config: BridgeConfig,
     hud: Option<HudHandle>,
+    shutdown: ShutdownToken,
 ) -> Result<(), String> {
     #[cfg(not(windows))]
     {
         let _ = config;
         let _ = hud;
+        let _ = shutdown;
         return Err(format!(
             "Assetto Corsa EVO adapter requires Windows shared memory ({ACE_MAPPING_NAME}); run this on the game PC"
         ));
@@ -61,6 +64,7 @@ pub fn start_ace_adapter_with_hud(
             ACE_PHYSICS_MIN_SIZE,
             parse_ace_update,
             hud,
+            shutdown,
         )
     }
 }
@@ -112,6 +116,7 @@ pub(crate) fn parse_ace_update(
             engine_damage: 0,
         }),
         status: Some(StatusSample {
+            packet_format: None,
             session_time: 0.0,
             frame_identifier,
             player_car_index: 0,
@@ -120,7 +125,7 @@ pub(crate) fn parse_ace_update(
             front_brake_bias: 0,
             fuel_in_tank: finite_or_zero(fuel_in_tank),
             fuel_capacity: 0.0,
-            fuel_remaining_laps: 0.0,
+            fuel_delta_laps: None,
             max_rpm: 0,
             idle_rpm: 0,
             max_gears: 0,
@@ -132,6 +137,9 @@ pub(crate) fn parse_ace_update(
             tyres_age_laps: 0,
             ers_store_energy: 0.0,
             ers_deploy_mode: 0,
+            ers_harvested_this_lap_mguk: 0.0,
+            ers_harvested_this_lap_mguh: 0.0,
+            ers_harvest_limit_per_lap: None,
             ers_deployed_this_lap: 0.0,
         }),
         ..TelemetryUpdate::default()

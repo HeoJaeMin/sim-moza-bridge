@@ -5,12 +5,17 @@ use crate::f1::car_damage::{
     parse_player_damage_sample, rewrite_all_tyre_wear_to_moza_named_order,
     to_f1_24_car_damage_compat_packet,
 };
+use crate::f1::car_setup::parse_player_setup_sample;
 use crate::f1::car_status::parse_player_status_sample;
 use crate::f1::car_telemetry::parse_player_input_sample;
-use crate::f1::constants::{F1_25_PACKET_FORMAT, packet_id, packet_name};
+use crate::f1::constants::{
+    F1_25_2026_SEASON_PACKET_FORMAT, F1_25_PACKET_FORMAT, packet_id, packet_name,
+};
+use crate::f1::final_classification::parse_player_final_classification_sample;
 use crate::f1::header::{PacketHeader, parse_packet_header};
-use crate::f1::lap_data::parse_player_lap_sample;
+use crate::f1::lap_data::{parse_player_lap_sample, parse_race_order_sample};
 use crate::f1::session::parse_session_sample;
+use crate::f1::tyre_sets::parse_player_tyre_sets_sample;
 use crate::games::{GameProfile, ProtocolKind};
 use crate::telemetry::TelemetryUpdate;
 
@@ -82,8 +87,8 @@ impl TelemetryBridge {
         }
 
         let header = self.parse_known_protocol_header(packet, protocol)?;
-        let telemetry_update = if is_supported_f1_25_header(&header) {
-            parse_telemetry_update(packet, header.packet_id)
+        let telemetry_update = if is_supported_f1_header(&header) {
+            parse_telemetry_update(packet, &header)
         } else {
             TelemetryUpdate::default()
         };
@@ -96,7 +101,7 @@ impl TelemetryBridge {
             });
         }
 
-        if !is_supported_f1_25_header(&header) {
+        if !is_supported_f1_header(&header) {
             self.stats.ignored += 1;
             return Some(ProcessedPacket {
                 packet: packet.to_vec(),
@@ -106,7 +111,8 @@ impl TelemetryBridge {
             });
         }
 
-        if header.packet_id == packet_id::CAR_DAMAGE
+        if header.packet_format == F1_25_PACKET_FORMAT
+            && header.packet_id == packet_id::CAR_DAMAGE
             && (self.fix_tyre_wear_order || self.f1_24_car_damage_compat)
         {
             let mut patched_packet = packet.to_vec();
@@ -209,19 +215,36 @@ impl TelemetryBridge {
     }
 }
 
-fn is_supported_f1_25_header(header: &PacketHeader) -> bool {
-    header.packet_format == F1_25_PACKET_FORMAT && header.game_year == 25
+fn is_supported_f1_header(header: &PacketHeader) -> bool {
+    matches!(
+        header.packet_format,
+        F1_25_PACKET_FORMAT | F1_25_2026_SEASON_PACKET_FORMAT
+    ) && header.game_year == 25
 }
 
-fn parse_telemetry_update(packet: &[u8], packet_id: u8) -> TelemetryUpdate {
-    let mut update = TelemetryUpdate::default();
+fn parse_telemetry_update(packet: &[u8], header: &PacketHeader) -> TelemetryUpdate {
+    let mut update = TelemetryUpdate {
+        packet_format: Some(header.packet_format),
+        session_uid: Some(header.session_uid),
+        ..TelemetryUpdate::default()
+    };
 
-    match packet_id {
+    match header.packet_id {
         packet_id::SESSION => update.session = parse_session_sample(packet).ok(),
-        packet_id::LAP_DATA => update.lap = parse_player_lap_sample(packet).ok(),
+        packet_id::LAP_DATA => {
+            update.lap = parse_player_lap_sample(packet).ok();
+            update.race_order = parse_race_order_sample(packet).ok();
+        }
+        packet_id::CAR_SETUPS => update.setup = parse_player_setup_sample(packet).ok(),
         packet_id::CAR_TELEMETRY => update.input = parse_player_input_sample(packet).ok(),
         packet_id::CAR_STATUS => update.status = parse_player_status_sample(packet).ok(),
         packet_id::CAR_DAMAGE => update.damage = parse_player_damage_sample(packet).ok(),
+        packet_id::TYRE_SETS => {
+            update.tyre_sets = parse_player_tyre_sets_sample(packet).ok().flatten()
+        }
+        packet_id::FINAL_CLASSIFICATION => {
+            update.final_classification = parse_player_final_classification_sample(packet).ok()
+        }
         _ => {}
     }
 

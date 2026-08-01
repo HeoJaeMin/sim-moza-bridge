@@ -8,6 +8,7 @@ use eframe::egui;
 
 use crate::config::BridgeConfig;
 use crate::hud::{HudHandle, new_hud_handle};
+use crate::runtime_control::{new_shutdown_token, request_shutdown};
 use skin::HudRenderer;
 
 pub fn run(config: BridgeConfig) -> Result<(), String> {
@@ -15,9 +16,12 @@ pub fn run(config: BridgeConfig) -> Result<(), String> {
     let worker_hud = hud.clone();
     let runtime_error = Arc::new(Mutex::new(None));
     let worker_error = Arc::clone(&runtime_error);
+    let shutdown = new_shutdown_token();
+    let worker_shutdown = Arc::clone(&shutdown);
 
-    thread::spawn(move || {
-        if let Err(error) = crate::start_runtime_with_hud(config, Some(worker_hud)) {
+    let worker = thread::spawn(move || {
+        if let Err(error) = crate::start_runtime_with_hud(config, Some(worker_hud), worker_shutdown)
+        {
             eprintln!("[startup-error] {error}");
             if let Ok(mut slot) = worker_error.lock() {
                 *slot = Some(error);
@@ -33,7 +37,7 @@ pub fn run(config: BridgeConfig) -> Result<(), String> {
         ..Default::default()
     };
 
-    eframe::run_native(
+    let ui_result = eframe::run_native(
         "Sim MOZA Bridge",
         options,
         Box::new(move |cc| {
@@ -44,8 +48,14 @@ pub fn run(config: BridgeConfig) -> Result<(), String> {
                 renderer: HudRenderer::default(),
             }))
         }),
-    )
-    .map_err(|error| format!("native HUD failed: {error}"))
+    );
+
+    request_shutdown(&shutdown);
+    let worker_result = worker.join();
+
+    ui_result.map_err(|error| format!("native HUD failed: {error}"))?;
+    worker_result.map_err(|_| "runtime worker panicked during shutdown".to_owned())?;
+    Ok(())
 }
 
 struct NativeHudApp {
